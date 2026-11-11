@@ -464,7 +464,7 @@ const Engine = (() => {
       if (ex.assist) return ex.bw * bw * (1 + Math.max(2, rtf - 4) / 30);
       return ex.bw * bw * (1 + rtf / 30);
     }
-    if (ex.load === 'band') return 12 * fem;
+    if (ex.load === 'band') return 17 * expF * fem;
     // scale from known lifts when available
     if (known.squat > 0 && ['quads', 'gluteMax', 'adductors'].includes(ex.m)) return known.squat * (ex.r / 1.3);
     if (known.bench > 0 && ['lowerChest', 'upperChest', 'triceps', 'frontDelts'].includes(ex.m)) return known.bench * (ex.r / 1.0);
