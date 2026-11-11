@@ -48,6 +48,7 @@ const Engine = (() => {
 
   // ================= SCHEDULE =================
   const dayStart = ts => { const d = new Date(ts); d.setHours(0, 0, 0, 0); return d.getTime(); };
+  const addDays = (ts, n) => { const d = new Date(ts); d.setHours(0, 0, 0, 0); d.setDate(d.getDate() + n); return d.getTime(); };   // safe across daylight saving changes
   const weekday = ts => (new Date(ts).getDay() + 6) % 7;     // 0 = Monday
   function trainedDays(st) { return new Set(st.history.map(h => dayStart(h.date))); }
   /** is `ts` a planned training day according to the schedule */
@@ -70,11 +71,11 @@ const Engine = (() => {
     const sc = st.settings.schedule;
     const last = st.history.length ? st.history[st.history.length - 1].date : null;
     const trained = trainedDays(st);
-    let candidate = last ? dayStart(last) + DAY : Math.max(dayStart(now), dayStart(sc.startDate || now));
+    let candidate = last ? addDays(last, 1) : Math.max(dayStart(now), dayStart(sc.startDate || now));
     if (sc.startDate && candidate < dayStart(sc.startDate)) candidate = dayStart(sc.startDate);
     for (let i = 0; i < 60; i++) {
       if (isTrainingDay(st, candidate) && !trained.has(candidate)) break;
-      candidate += DAY;
+      candidate = addDays(candidate, 1);
     }
     const hour = sc.hour != null ? sc.hour : (last ? new Date(last).getHours() : 17);
     const minute = sc.minute != null ? sc.minute : (last ? new Date(last).getMinutes() : 0);
@@ -89,9 +90,9 @@ const Engine = (() => {
   }
   function consecutiveTrained(st, now) {
     const trained = trainedDays(st);
-    let n = 0, d = dayStart(now) - DAY;
+    let n = 0, d = addDays(now, -1);
     if (trained.has(dayStart(now))) { n++; }
-    while (trained.has(d)) { n++; d -= DAY; }
+    while (trained.has(d)) { n++; d = addDays(d, -1); }
     return n;
   }
   /** recovery day: trained more consecutive days than the schedule allows */
@@ -695,7 +696,7 @@ const Engine = (() => {
   }
 
   return {
-    LB, FATIGUE, DAY, uid, clamp, level, recommendedType, templateWorkouts, routine, currentWorkout, unusedMuscles, routineValid,
+    LB, FATIGUE, DAY, addDays, uid, clamp, level, recommendedType, templateWorkouts, routine, currentWorkout, unusedMuscles, routineValid,
     dayStart, weekday, isTrainingDay, nextWorkoutAt, budgetFor, consecutiveTrained, restRecommended, deloadState, recovery,
     env, available, injury, disliked, score, ranked, candidates, restFor, minRest, rirFor, repRangeFor, setDur, transition, warmupCount, estimate, baseSets,
     buildPlan, finalize, exPref, setExPref, variantsFor, primaryEquip, equipOptions, machineCfg, barWeightFor,

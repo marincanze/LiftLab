@@ -24,3 +24,11 @@ Glej [NAMESTITEV.md](NAMESTITEV.md) (Samsung Galaxy, One UI 9).
 - `js/engine.js` – urnik, deload, sestava treninga, model moči, zaokroževanje na inventar, namigi
 - `js/app.js` – jedro (navigacija, okna, vodiči, časovniki); `profile.js`, `settings.js`, `session.js`, `views.js` – zasloni
 - `js/i18n.js` – prevodi; `css/app.css` – tema; `sw.js` – delovanje brez povezave
+
+## Privzete odločitve
+- **Tehnologija:** spletna aplikacija (PWA) v čistem JavaScriptu, brez orodij za gradnjo. Namesti se iz brskalnika in deluje brez povezave.
+- **Podatki:** samo lokalno v napravi (`localStorage`), z izvozom in uvozom varnostne kopije.
+- **Videz:** svetla, minimalistična tema z modrim poudarkom; temna tema je na voljo v nastavitvah.
+
+## Kaj ni vključeno
+Funkcije, ki potrebujejo strežnik ali drugo napravo: prijava in račun, naročnine, sinhronizacija med napravami, aplikacija za uro in vgrajeni videi vaj. Namesto videa je povezava do iskanja vaje na YouTubu.

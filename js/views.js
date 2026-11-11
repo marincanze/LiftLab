@@ -29,14 +29,14 @@
     const w = E.currentWorkout(st());
     const dl = E.deloadState(st(), now);
     const ws = weekStart(now);
-    const weekHs = st().history.filter(h => h.date >= ws - 7 * DAY && h.date < ws);
+    const weekHs = st().history.filter(h => h.date >= E.addDays(ws, -7) && h.date < ws);
     const prs = weekHs.reduce((a, h) => a + (h.prs || []).length, 0);
     const sets = weekHs.reduce((a, h) => a + h.items.reduce((b, i) => b + i.sets.length, 0), 0);
     const newVersion = s.whatsNewSeen !== RELEASE_NOTES[0].v;
     const learnKey = cal >= 80 ? 'learned' : (cal > 0 || st().history.length) ? 'learning' : 'fresh';
     const sc = s.schedule;
     const trained = new Set(st().history.map(h => E.dayStart(h.date)));
-    const days = Array.from({ length: 7 }, (_, i) => { const ts = ws + i * DAY; return { ts, lbl: t('wd.' + i), done: trained.has(ts), plan: E.isTrainingDay(st(), ts), today: ts === E.dayStart(now) }; });
+    const days = Array.from({ length: 7 }, (_, i) => { const ts = E.addDays(ws, i); return { ts, lbl: t('wd.' + i), done: trained.has(ts), plan: E.isTrainingDay(st(), ts), today: ts === E.dayStart(now) }; });
     return `${App.brand()}
       <h1 class="hello">${esc(s.name) || t('home.hello')}</h1>
       <p class="lead">${t('home.welcome')}</p>
@@ -143,7 +143,7 @@
   function buckets(from, to, monthly) {
     const out = [];
     if (monthly) { const d = new Date(from); d.setDate(1); d.setHours(0, 0, 0, 0); while (d.getTime() <= to) { const s0 = d.getTime(); d.setMonth(d.getMonth() + 1); out.push({ from: s0, to: d.getTime() - 1, lbl: new Date(s0).toLocaleDateString(S().lang === 'sl' ? 'sl-SI' : 'en-GB', { month: 'short' }) }); } }
-    else { let s0 = weekStart(from); while (s0 <= to) { out.push({ from: s0, to: s0 + 7 * DAY - 1, lbl: new Date(s0).toLocaleDateString(S().lang === 'sl' ? 'sl-SI' : 'en-GB', { day: 'numeric', month: 'numeric' }) }); s0 += 7 * DAY; } }
+    else { let s0 = weekStart(from); while (s0 <= to) { out.push({ from: s0, to: E.addDays(s0, 7) - 1, lbl: new Date(s0).toLocaleDateString(S().lang === 'sl' ? 'sl-SI' : 'en-GB', { day: 'numeric', month: 'numeric' }) }); s0 = E.addDays(s0, 7); } }
     return out;
   }
   V.stats = () => {
