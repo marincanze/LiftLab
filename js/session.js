@@ -61,7 +61,7 @@
     const noteHtml = note ? `<p class="exnote">${ICON.note} ${esc(note)}</p>` : '';
     if (S().prefs.hideVideos) return `<div class="vbar"><button class="round sm" data-a="toggleVideo" aria-label="${t('video.show')}">${ICON.eye}</button><span class="vlbl">${t('video.hidden')}</span>${tools}</div>${noteHtml}`;
     return `<div class="vbox"><button class="round sm tl" data-a="toggleVideo" aria-label="${t('video.hide')}">${ICON.eyeOff}</button><div class="vtools">${tools}</div>
-        <a class="vplay" href="${App.ytUrl(ex.id)}" target="_blank" rel="noopener"><span class="play">${ICON.play}</span><span>${t('video.watch')}</span></a></div>${noteHtml}`;
+        ${Anim.svg(ex, { label: App.exName(ex.id) })}</div><p class="vcue"><b>${t('anim.tempo')}</b>${ex.cue ? ' ' + esc(ex.cue[S().lang] || ex.cue.en) : ''}</p>${noteHtml}`;
   }
   function cardHead(it, i, ex, opts) {
     const fav = st().favorites.includes(ex.id);
@@ -536,7 +536,8 @@
     const prev = st().history.map(h => h.items.find(i => i.exId === ex.id && i.sets.length)).filter(Boolean);
     const best = prev.length ? Math.max(...prev.map(p => E.bestNormE1(ex, p.sets, s.bodyweight))) : null;
     App.openSheet(() => `<div class="sheet-head"><h2>${esc(App.exName(ex.id))}</h2><button class="icon-btn circ" data-a="closeSheet">${ICON.x}</button></div>
-      ${ex.custom ? '' : `<a class="vbox static" href="${App.ytUrl(ex.id)}" target="_blank" rel="noopener"><span class="play">${ICON.play}</span><span>${t('video.watch')}</span></a>`}
+      <div class="vbox static">${Anim.svg(ex, { label: App.exName(ex.id) })}</div>
+      <p class="hint anim-hint">${t(ex.custom ? 'anim.custom' : 'anim.legend', { m: App.mName(ex.m) })}${ex.custom ? '' : ` <a href="${App.ytUrl(ex.id)}" target="_blank" rel="noopener">${t('video.watch')}</a>`}</p>
       <div class="chips">${chip('', ICON.target + ' ' + App.mName(ex.m), 'muscle')}${(ex.sec || []).map(m => chip('', App.mName(m))).join('')}</div>
       <details class="acc" open><summary>${t('info.equip')}</summary><div class="req">${reqHtml}</div></details>
       <details class="acc" open><summary>${t('info.guide')}</summary><ol class="steps">${steps.map(x => `<li>${esc(x)}</li>`).join('')}</ol></details>

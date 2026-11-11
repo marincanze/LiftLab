@@ -40,6 +40,22 @@ const Engine = (() => {
     const train = s.musclesToTrain && s.musclesToTrain.length ? s.musclesToTrain : DEFAULT_TRAIN;
     return train.filter(m => !used.has(m));
   }
+  /** how many times per week the routine trains muscle `m` */
+  function weeklyFreq(st, m) {
+    const r = routine(st);
+    if (!r.length) return 0;
+    const sc = st.settings.schedule;
+    const on = sc.cycleOn || 1;
+    const days = sc.cyclic ? 7 * on / (on + (sc.cycleOff || 0)) : (sc.specificDays && sc.days && sc.days.length ? sc.days.length : (sc.daysPerWeek || 4));
+    return r.filter(w => w.muscles.includes(m)).length / r.length * days;
+  }
+  /**
+   * Large muscle that the routine trains only about once a week. Weekly volume drives growth and frequency
+   * matters little once volume is equal (Pelland et al. 2025), so its single session gets more sets,
+   * up to ~10 per session where returns flatten.
+   */
+  const SIBLING = { upperChest: 'lowerChest', lowerChest: 'upperChest', lats: 'upperBack', upperBack: 'lats' };
+  const lowFreq = (st, m) => MUSCLE_IMP[m] === 1 && level(st.settings) !== 'beginner' && weeklyFreq(st, m) <= 1.25;
   function routineValid(type, s) {
     if (type === 'custom') return s.workouts.length > 0 && s.workouts.every(w => w.muscles.length);
     const ws = templateWorkouts(type === 'recommended' ? recommendedType(s) : type, s);
@@ -275,10 +291,14 @@ const Engine = (() => {
     return clamp(n, 1, maxSets(s, rank));
   }
   const muscleSets = (items, m) => items.filter(i => i.m === m).reduce((a, i) => a + i.sets, 0);
+  /** sets for a muscle with assisting work counted as half a set */
+  const fracSets = (items, m) => items.reduce((a, i) => a + (i.m === m ? i.sets : ((EX[i.exId] || {}).sec || []).includes(m) ? i.sets * 0.5 : 0), 0);
 
   function fit(items, st, wid, budget, used, deload) {
     const s = st.settings;
     const est = () => estimate(items, s);
+    const lfMemo = {};
+    const lf = m => (m in lfMemo ? lfMemo[m] : (lfMemo[m] = lowFreq(st, m) ? 1 : 0));
     const idx = arr => arr.map((it, i) => ({ it, i }));
     const worst = arr => arr.sort((a, b) => (b.it.imp - a.it.imp) || (b.i - a.i))[0];
     let guard = 300;
@@ -299,12 +319,30 @@ const Engine = (() => {
       break;
     }
     if (deload) return;
+    // once-a-week large muscles: a second exercise comes before extra sets for small muscles
+    [...new Set(items.filter(i => i.imp === 1 && lf(i.m)).map(i => i.m))].forEach(m => {
+      if (fracSets(items, m) >= 7 || items.some(i => i.m === SIBLING[m])) return;   // chest and back are already split into two muscles each
+      const key = `${wid}:e:${m}`;
+      const id = pick(st, key, m, 0, used);
+      if (!id) return;
+      let pos = 0;
+      items.forEach((i, k) => { if (i.m === m) pos = k + 1; });
+      const it = { exId: id, m, key, imp: 2, extra: true, sets: 2, rest: restFor(EX[id], s) };
+      items.splice(pos, 0, it);
+      const cut = [];
+      while (est() > budget) {
+        const c = worst(idx(items).filter(o => o.it !== it && o.it.imp >= 2 && !lf(o.it.m) && o.it.sets > 2));
+        if (!c) break;
+        c.it.sets--; cut.push(c.it);
+      }
+      if (est() > budget) { items.splice(items.indexOf(it), 1); cut.forEach(x => x.sets++); } else used.add(id);
+    });
     const frozen = new Set();
     guard = 300;
     while (guard--) {
       const cand = idx(items)
-        .filter(o => !frozen.has(o.it) && o.it.sets < maxSets(s, prioRank(s, o.it.m)) && muscleSets(items, o.it.m) < (prioRank(s, o.it.m) === 0 ? 10 : 8))
-        .sort((a, b) => (a.it.sets + a.it.imp) - (b.it.sets + b.it.imp) || (a.it.imp - b.it.imp) || (a.i - b.i))[0];
+        .filter(o => !frozen.has(o.it) && o.it.sets < maxSets(s, prioRank(s, o.it.m)) + lf(o.it.m) && muscleSets(items, o.it.m) < (prioRank(s, o.it.m) === 0 || lf(o.it.m) ? 10 : 8))
+        .sort((a, b) => (a.it.sets + a.it.imp - lf(a.it.m)) - (b.it.sets + b.it.imp - lf(b.it.m)) || (a.it.imp - b.it.imp) || (a.i - b.i))[0];
       if (cand) {
         cand.it.sets++;
         if (est() > budget) { cand.it.sets--; frozen.add(cand.it); }
@@ -373,7 +411,7 @@ const Engine = (() => {
       if (!id) return;
       used.add(id);
       const imp = rank(m) < 99 ? 1 : (w.muscles.includes(m) ? MUSCLE_IMP[m] : 2);
-      items.push({ exId: id, m, key, imp, extra: false, sets: baseSets(s, m, false, deload), rest: restFor(EX[id], s) });
+      items.push({ exId: id, m, key, imp, extra: false, sets: baseSets(s, m, false, deload) + (!deload && lowFreq(st, m) ? 1 : 0), rest: restFor(EX[id], s) });
     });
     const full = estimate(items, s);
     const over = full > minutes * 60 * 1.05 && minutes <= 75;
@@ -696,7 +734,7 @@ const Engine = (() => {
   }
 
   return {
-    LB, FATIGUE, DAY, addDays, uid, clamp, level, recommendedType, templateWorkouts, routine, currentWorkout, unusedMuscles, routineValid,
+    LB, FATIGUE, DAY, addDays, uid, clamp, level, recommendedType, templateWorkouts, routine, currentWorkout, unusedMuscles, routineValid, weeklyFreq,
     dayStart, weekday, isTrainingDay, nextWorkoutAt, budgetFor, consecutiveTrained, restRecommended, deloadState, recovery,
     env, available, injury, disliked, score, ranked, candidates, restFor, minRest, rirFor, repRangeFor, setDur, transition, warmupCount, estimate, baseSets,
     buildPlan, finalize, exPref, setExPref, variantsFor, primaryEquip, equipOptions, machineCfg, barWeightFor,

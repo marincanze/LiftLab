@@ -323,6 +323,8 @@ const NOTES = {
 
 /* Release notes shown under "What's new" */
 const RELEASE_NOTES = [
+  { v: '1.1', date: '2026-11-11', en: ['Animated figures now show how every exercise is performed — at the recommended tempo, with the target muscle highlighted, and fully offline. They replace the video links.', 'Routines that train a large muscle only once a week (e.g. push/pull/legs on 3 days, body-part split) now give it more sets in that session, because weekly volume is what drives growth.'],
+    sl: ['Animirane figure zdaj pokažejo izvedbo vsake vaje — v priporočenem tempu, z označeno ciljno mišico in povsem brez povezave. Nadomeščajo povezave do videov.', 'Rutine, ki veliko mišico trenirajo le enkrat tedensko (npr. potisk/poteg/noge v 3 dneh, trening po delih telesa), ji zdaj v tem treningu namenijo več setov, ker rast poganja tedenski volumen.'] },
   { v: '1.0', date: '2026-11-10', en: ['First release: profile setup, routines, time-aware planning, supersets, drop sets, plate calculator, training environments with weight inventories, stats and charts.', 'Everything works offline and all data stays on this device.'],
     sl: ['Prva izdaja: nastavitev profila, rutine, načrtovanje glede na čas, superseti, drop seti, kalkulator plošč, okolja za trening z inventarjem uteži, statistika in grafi.', 'Vse deluje brez povezave, vsi podatki ostanejo na tej napravi.'] }
 ];
