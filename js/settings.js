@@ -378,7 +378,8 @@
     const inp = document.getElementById('invW'); if (inp) { const v = Number(String(inp.value).replace(',', '.')); if (v > 0) ed.w = App.kgFrom(v); }
     e[ed.list] = e[ed.list] || [];
     const existing = e[ed.list].findIndex((x, i) => Math.abs(x.w - ed.w) < 1e-6 && i !== ed.i);
-    if (ed.i >= 0) e[ed.list][ed.i] = { w: ed.w, q: ed.q }; else if (existing >= 0) e[ed.list][existing].q = ed.q; else e[ed.list].push({ w: ed.w, q: ed.q });
+    if (ed.i >= 0 && existing >= 0) { e[ed.list][existing].q = ed.q; e[ed.list].splice(ed.i, 1); }
+    else if (ed.i >= 0) e[ed.list][ed.i] = { w: ed.w, q: ed.q }; else if (existing >= 0) e[ed.list][existing].q = ed.q; else e[ed.list].push({ w: ed.w, q: ed.q });
     e[ed.list].sort((a, b) => a.w - b.w);
     ui.inv.edit = null; bump(e); App.refreshSheet(); App.render();
   };

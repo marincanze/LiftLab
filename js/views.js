@@ -33,7 +33,7 @@
     const prs = weekHs.reduce((a, h) => a + (h.prs || []).length, 0);
     const sets = weekHs.reduce((a, h) => a + h.items.reduce((b, i) => b + i.sets.length, 0), 0);
     const newVersion = s.whatsNewSeen !== RELEASE_NOTES[0].v;
-    const learnKey = cal >= 80 ? 'learned' : cal > 0 ? 'learning' : 'fresh';
+    const learnKey = cal >= 80 ? 'learned' : (cal > 0 || st().history.length) ? 'learning' : 'fresh';
     const sc = s.schedule;
     const trained = new Set(st().history.map(h => E.dayStart(h.date)));
     const days = Array.from({ length: 7 }, (_, i) => { const ts = ws + i * DAY; return { ts, lbl: t('wd.' + i), done: trained.has(ts), plan: E.isTrainingDay(st(), ts), today: ts === E.dayStart(now) }; });
