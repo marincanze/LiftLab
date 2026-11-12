@@ -39,7 +39,7 @@ const Store = (() => {
     return {
       v: 1, createdAt: now,
       settings: {
-        lang: 'sl', theme: 'light', units: 'kg', lengthUnits: 'cm',
+        lang: 'sl', theme: 'dark', units: 'kg', lengthUnits: 'cm',
         name: '', sex: 'm', birthYear: null, bodyweight: 80, height: 178, bodyType: 'average',
         experience: '1-3y', lifter: 'hobbyist', goal: 'blend', e1rm: { squat: null, bench: null, deadlift: null }, wilks: null,
         lastDeloadWeeks: null, firstWeekDeload: false,
@@ -48,7 +48,7 @@ const Store = (() => {
         schedule: { daysPerWeek: 4, specificDays: false, days: [0, 2, 4, 6], cyclic: false, cycleOn: 3, cycleOff: 1, unlimitedTime: false, timePerDay: 60, perDayTime: {}, startDate: null, hour: 17, minute: 0 },
         profile: blankProfile(), injuries: [],
         envId: gym.id,
-        prefs: { hideVideos: false, logBothSides: true, autoStart: false, showEstReps: true, prNotifications: true, suggestions: true, sound: true, notifications: true,
+        prefs: { hideVideos: false, logBothSides: true, autoStart: false, showEstReps: true, prNotifications: true, suggestions: true, sound: true, notifications: true, tutorials: true,
           supersetStrategy: 'short', dropsetStrategy: 'never', restMode: 'min', fullscreen: false },
         onboarded: false, setupStep: 0, tours: {}, whatsNewSeen: null
       },
@@ -72,6 +72,8 @@ const Store = (() => {
     out.disliked = out.disliked.map(x => (typeof x === 'string' ? { exId: x, envId: null } : x));
     ['swaps', 'exPrefs', 'notes'].forEach(k => { if (!out[k] || typeof out[k] !== 'object') out[k] = {}; });
     if (!out.createdAt) out.createdAt = Date.now();
+    if (s && !s.darkDefault && out.settings.theme === 'light') out.settings.theme = 'dark';   // one-time switch to the dark default; the choice in the settings is kept afterwards
+    out.darkDefault = true;
     return out;
   }
   function load() {

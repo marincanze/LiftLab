@@ -14,7 +14,6 @@
     { id: 'personal', cat: 'personal', sub: 'personal' },
     { id: 'experience', cat: 'training', sub: 'experience' },
     { id: 'competitive', cat: 'training', sub: 'competitive' },
-    { id: 'routine', cat: 'training', sub: 'routine' },
     { id: 'muscles', cat: 'training', sub: 'bodyParts' },
     { id: 'prio', cat: 'training', sub: 'prio' },
     { id: 'rir', cat: 'training', sub: 'rir' },
@@ -22,6 +21,7 @@
     { id: 'consistency', cat: 'training', sub: 'consistency' },
     { id: 'repRanges', cat: 'training', sub: 'repRanges' },
     { id: 'days', cat: 'training', sub: 'days' },
+    { id: 'routine', cat: 'training', sub: 'routine' },
     { id: 'program', cat: 'recent', sub: 'program' },
     { id: 'recent', cat: 'recent', sub: 'recent' },
     { id: 'exercise', cat: 'recent', sub: 'exercise' },
@@ -157,7 +157,14 @@
   STEP.routine = () => {
     const s = S();
     const rec = Engine.recommendedType(s);
-    return `${q(t('rt.q'))}${hint(t('rt.hint'))}
+    const sc = s.schedule;
+    const days = sc.cyclic ? Math.round(7 * (sc.cycleOn || 1) / ((sc.cycleOn || 1) + (sc.cycleOff || 0)) * 10) / 10 : (sc.specificDays && sc.days && sc.days.length ? sc.days.length : sc.daysPerWeek);
+    const why = (s.prio || []).length ? 'prio' : days <= 3 ? 'd3' : days <= 4 ? 'd4' : days <= 5 ? 'd5' : 'd6';
+    const recCard = `<div class="card note-card rec-card"><small class="muted">${t('rt.recFor')}</small><b class="title-md">${t('rt.' + rec)}</b>
+        <div class="chips">${App.chip('', t('goal.' + s.goal))}${App.chip('', t('rt.recDays', { n: App.fmtNum(days) }))}${App.chip('', sc.unlimitedTime ? t('rt.recNoLimit') : t('rt.recTime', { n: sc.timePerDay }))}${(s.prio || []).slice(0, 2).map(m => App.chip('', App.mName(m))).join('')}</div>
+        <p>${t('rt.why.' + why, { n: App.fmtNum(days) })}${!sc.unlimitedTime && sc.timePerDay <= 40 ? ' ' + t('rt.why.short') : ''}</p>
+        ${s.routineType === 'recommended' ? `<small class="ok-txt">${t('rt.recOn')}</small>` : `<button class="btn primary inline" data-a="pickRoutine" data-v="recommended">${t('rt.recUse')}</button>`}</div>`;
+    return `${q(t('rt.q'))}${hint(t('rt.hint'))}${recCard}
       ${ROUTINE_ORDER.map(v => { const ok = Engine.routineValid(v, s); return `<button class="radio-row ${s.routineType === v ? 'on' : ''}" data-a="pickRoutine" data-v="${v}" ${ok ? '' : 'disabled'}><span><b>${t('rt.' + v)}${v === 'recommended' ? ` → ${t('rt.' + rec)}` : ''}</b><small>${t('rt.' + v + '.d')}</small></span><i class="rdot"></i></button>`; }).join('')}
       ${s.routineType === 'custom' ? customRoutineHtml() : ''}
       ${Engine.unusedMuscles(st()).length ? `<p class="warn-txt">${ICON.warn}<span>${t('rt.unused')} ${Engine.unusedMuscles(st()).map(App.mName).join(', ')}.</span></p>` : ''}

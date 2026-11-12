@@ -61,7 +61,7 @@
     const noteHtml = note ? `<p class="exnote">${ICON.note} ${esc(note)}</p>` : '';
     if (S().prefs.hideVideos) return `<div class="vbar"><button class="round sm" data-a="toggleVideo" aria-label="${t('video.show')}">${ICON.eye}</button><span class="vlbl">${t('video.hidden')}</span>${tools}</div>${noteHtml}`;
     return `<div class="vbox"><button class="round sm tl" data-a="toggleVideo" aria-label="${t('video.hide')}">${ICON.eyeOff}</button><div class="vtools">${tools}</div>
-        ${Anim.svg(ex, { label: App.exName(ex.id) })}</div><p class="vcue"><b>${t('anim.tempo')}</b>${ex.cue ? ' ' + esc(ex.cue[S().lang] || ex.cue.en) : ''}</p>${noteHtml}`;
+        ${Anim.svg(ex, { label: App.exName(ex.id), phases: [t('anim.lift'), t('anim.lower')] })}</div><p class="vcue"><b>${t('anim.tempo')}</b>${ex.cue ? ' ' + esc(ex.cue[S().lang] || ex.cue.en) : ''}</p>${noteHtml}`;
   }
   function cardHead(it, i, ex, opts) {
     const fav = st().favorites.includes(ex.id);
@@ -72,6 +72,7 @@
         <button class="icon-btn" data-a="exMenu" data-i="${i}" aria-label="menu">${ICON.dots}</button>
       </div>`;
   }
+  A.figToggle = (d, el) => { const g = el.closest('svg'); if (!g || !g.pauseAnimations) return; if (g.animationsPaused()) g.unpauseAnimations(); else g.pauseAnimations(); g.classList.toggle('paused', g.animationsPaused()); };
   A.toggleVideo = () => { S().prefs.hideVideos = !S().prefs.hideVideos; App.save(); App.keepScroll(App.render); };
   A.expand = d => { const i = +d.i; ui.expanded = ui.expanded === i ? -1 : i; App.keepScroll(App.render); };
   A.weightTap = d => {
@@ -536,7 +537,7 @@
     const prev = st().history.map(h => h.items.find(i => i.exId === ex.id && i.sets.length)).filter(Boolean);
     const best = prev.length ? Math.max(...prev.map(p => E.bestNormE1(ex, p.sets, s.bodyweight))) : null;
     App.openSheet(() => `<div class="sheet-head"><h2>${esc(App.exName(ex.id))}</h2><button class="icon-btn circ" data-a="closeSheet">${ICON.x}</button></div>
-      <div class="vbox static">${Anim.svg(ex, { label: App.exName(ex.id) })}</div>
+      <div class="vbox static">${Anim.svg(ex, { label: App.exName(ex.id), phases: [t('anim.lift'), t('anim.lower')] })}</div>
       <p class="hint anim-hint">${t(ex.custom ? 'anim.custom' : 'anim.legend', { m: App.mName(ex.m) })}${ex.custom ? '' : ` <a href="${App.ytUrl(ex.id)}" target="_blank" rel="noopener">${t('video.watch')}</a>`}</p>
       <div class="chips">${chip('', ICON.target + ' ' + App.mName(ex.m), 'muscle')}${(ex.sec || []).map(m => chip('', App.mName(m))).join('')}</div>
       <details class="acc" open><summary>${t('info.equip')}</summary><div class="req">${reqHtml}</div></details>
@@ -580,7 +581,7 @@
     st().active = { id: 's' + now, wid: w.id, wname: App.workoutName(w), envId: E.env(st()).id, envName: E.env(st()).name, start: now, budgetMin: d.minutes, items, cur: -1, phaseStart: now, restEnd: null, warmEnd: null, beeped: true, pausedAt: null, pausedTotal: 0, deload: !!d.deload };
     setCurrent(0);
     ui.expanded = -1; ui.focus = !!S().prefs.fullscreen;
-    App.save(); App.requestWakeLock(); App.render(); window.scrollTo({ top: 0 });
+    App.save(); App.requestWakeLock(); App.requestNotifications(); App.render(); window.scrollTo({ top: 0 });
     setTimeout(() => App.startTour('workout', [
       { sel: '#tour-end', title: t('tour.end.t'), text: t('tour.end') },
       { sel: '#ex-0', title: t('tour.card.t'), text: t('tour.card') },
@@ -799,6 +800,10 @@
       else if (k === 'restLabel') el.textContent = a.restEnd && a.restEnd > eff ? t('restNow') : t('goNow');
       else if (k === 'endAt') { const end = predictedEnd(a, eff); el.textContent = App.fmtTime(end); el.classList.toggle('late', end > a.start + a.budgetMin * 60000 + 60000); }
     });
+    const cur = a && a.cur >= 0 && !a.pausedAt ? a.items[a.cur] : null;
+    if (cur && cur.phase === 'rest' && a.restEnd && !a.beeped) App.scheduleTimerAlert(a.restEnd, t('goNow'));
+    else if (cur && cur.phase === 'warmup' && a.warmEnd && !a.beeped) App.scheduleTimerAlert(a.warmEnd, t('a.wuDone'));
+    else App.scheduleTimerAlert(null);
     if (!a || a.cur < 0 || a.pausedAt) return;
     const it = a.items[a.cur]; if (!it) return;
     if (it.phase === 'rest' && a.restEnd && !a.beeped && now >= a.restEnd) {

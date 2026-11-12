@@ -6,8 +6,8 @@
   color-scheme: light;
 }
 :root[data-theme="dark"] {
-  --bg: #0f1419; --card: #171d26; --card2: #1f2733; --line: #2a3340; --text: #e8edf3; --muted: #94a3b8;
-  --fig: #cbd5e1; --fig2: #5b6878; --fig3: #3b4757; --acc: #60a5fa; --acc-soft: #1e2a44; --acc-text: #93c5fd; --ok: #4ade80; --ok-soft: #14301f; --warn: #fbbf24; --warn-soft: #3a2a0f; --danger: #f87171; --danger-soft: #3b1a1a;
+  --bg: #0b0f14; --card: #151b24; --card2: #1d2530; --line: #2a3441; --text: #eef2f7; --muted: #9aa8ba;
+  --fig: #d5dde8; --fig2: #5d6b7d; --fig3: #3d4a5b; --acc: #60a5fa; --acc-soft: #1e2a44; --acc-text: #93c5fd; --ok: #4ade80; --ok-soft: #14301f; --warn: #fbbf24; --warn-soft: #3a2a0f; --danger: #f87171; --danger-soft: #3b1a1a;
   --shadow: none; color-scheme: dark;
 }
 * { box-sizing: border-box; -webkit-tap-highlight-color: transparent; }
@@ -425,10 +425,22 @@ details.acc[open] summary::after { content: '⌃'; }
 .fig { display: block; width: 100%; height: 100%; }
 .fig path { fill: none; stroke-linecap: round; stroke-linejoin: round; }
 .fig .f-body { stroke: var(--fig); } .fig circle.f-body { fill: var(--fig); stroke: none; }
-.fig .f-far { stroke: var(--fig2); }
+.fig .f-far { stroke: var(--fig2); } .fig circle.f-far { fill: var(--fig2); stroke: none; }
 .fig .f-hl { stroke: var(--acc); } .fig circle.f-hl { fill: var(--acc); stroke: none; }
 .fig .f-eq { stroke: var(--muted); } .fig circle.f-eq { fill: var(--muted); stroke: none; }
 .fig .f-plate { fill: none; stroke: var(--muted); stroke-width: 3; }
 .fig .f-cable { stroke: var(--muted); } .fig .f-band { stroke: var(--warn); stroke-dasharray: 3 3; }
 .fig .f-st { stroke: var(--fig3); } .fig rect.f-st, .fig circle.f-st { fill: var(--fig3); stroke: none; }
 .fig .f-floor { stroke: var(--fig3); stroke-width: 2; }
+
+.tour-off { display: block; margin: 10px auto 0; background: none; border: 0; color: var(--muted); font-size: 13px; text-decoration: underline; padding: 4px 8px; }
+.rec-card { display: flex; flex-direction: column; gap: 6px; margin-bottom: 14px; }
+.rec-card p { margin: 0; font-size: 14px; }
+.rec-card .btn { align-self: flex-start; }
+.ok-txt { color: var(--ok); font-size: 13px; }
+:root[data-theme="dark"] .card { box-shadow: 0 1px 0 rgba(255,255,255,.03) inset; }
+:root[data-theme="dark"] .vbox { background: linear-gradient(180deg, #1a222d, #121820); border-color: var(--line); }
+.fig { cursor: pointer; }
+.fig .f-phase { font-size: 8.5px; font-weight: 700; letter-spacing: .6px; fill: var(--muted); }
+.fig .f-phase.f-lift { fill: var(--acc-text); }
+.fig.paused { opacity: .75; }

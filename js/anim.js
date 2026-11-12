@@ -14,6 +14,7 @@ const Anim = (() => {
   const dir = a => [Math.sin(rad(a)), Math.cos(rad(a))];          // 0 = down, 90 = forward (+x), 180 = up
   const add = (p, v, k = 1) => [p[0] + v[0] * k, p[1] + v[1] * k];
   const r1 = v => Math.round(v * 10) / 10;
+  const r3 = v => Math.round(v * 1000) / 1000;
   const ease = x => x * x * (3 - 2 * x);
 
   /** two-bone IK: joint position and reachable end point */
@@ -35,6 +36,7 @@ const Anim = (() => {
     else td = [Math.sin(rad(p.t || 0)), -Math.cos(rad(p.t || 0))];
     J.neck = add(J.hip, td, LEN.torso);
     J.mid = add(J.hip, td, LEN.torso * 0.5);
+    J.chest = add(J.hip, td, LEN.torso * 0.84);
     J.sh = add(J.hip, td, LEN.sh + (p.shr || 0));
     const h = rad(p.hd || 0);
     const hdv = [td[0] * Math.cos(h) - td[1] * Math.sin(h), td[0] * Math.sin(h) + td[1] * Math.cos(h)];
@@ -65,6 +67,7 @@ const Anim = (() => {
     J.hip = p.hip;
     J.neck = add(J.hip, td, LEN.torso * T);
     J.mid = add(J.hip, td, LEN.torso * T * 0.5);
+    J.chest = add(J.hip, td, LEN.torso * T * 0.84);
     const shc = add(J.hip, td, (LEN.sh + (p.shr || 0)) * T);
     J.head = add(J.neck, td, LEN.neck + LEN.head);
     J.sh = add(shc, pr, 11); J.sh2 = add(shc, pr, -11);
@@ -227,26 +230,31 @@ const Anim = (() => {
     const hipL = f ? J.hp2 : J.hip, hipR = f ? J.hp : J.hip, shL = f ? J.sh2 : J.sh;
     const far = f ? 'body' : 'far';
     const legs = !def.c.nolegs;
+    // limbs taper towards the hand / foot so the figure reads as a body, not a stick
+    const leg = (cls, h, k) => { P(cls, 10, h, J['knee' + k]); P(cls, 7.5, J['knee' + k], J['ankle' + k]); P(cls, 6, J['ankle' + k], J['toe' + k]); };
+    const arm = (cls, sh, k) => { P(cls, 7.5, sh, J['el' + k]); P(cls, 5.8, J['el' + k], J['hand' + k]); C(cls, J['hand' + k], 3.3, true); };
     // far side
-    if (legs) P(far, 8, hipL, J.knee2, J.ankle2, J.toe2);
-    P(far, 6.5, shL, J.el2, J.hand2);
-    // trunk
-    P('body', 13, J.hip, J.neck);
-    if (f) { P('body', 9, J.sh2, J.sh); if (legs) P('body', 9, J.hp2, J.hp); }
+    if (legs) leg(far, hipL, '2');
+    arm(far, shL, '2');
+    // trunk: hips, waist, chest, neck, head
+    P('body', 12, J.hip, J.mid);
+    P('body', f ? 13 : 14.5, J.mid, J.chest);
+    P('body', 6, J.chest, J.head);
+    if (f) { P('body', 10, J.sh2, J.sh); if (legs) P('body', 11, J.hp2, J.hp); }
     C('body', J.head, LEN.head, true);
-    if (part === 'torsoU') P('hl', 13, J.mid, J.neck);
-    if (part === 'torsoL') P('hl', 13, J.hip, J.mid);
-    if (part === 'traps') { if (f) P('hl', 9, J.sh2, J.sh); else P('hl', 13, add(J.mid, [(J.neck[0] - J.mid[0]) * 0.5, (J.neck[1] - J.mid[1]) * 0.5]), J.neck); }
-    if (part === 'neck') P('hl', 7, J.neck, J.head);
+    if (part === 'torsoU') P('hl', f ? 13 : 14.5, J.mid, J.chest);
+    if (part === 'torsoL') P('hl', 12, J.hip, J.mid);
+    if (part === 'traps') { if (f) P('hl', 10, J.sh2, J.sh); else P('hl', 9, J.chest, J.neck); }
+    if (part === 'neck') P('hl', 6, J.chest, J.neck);
     // near side
-    if (legs) P('body', 8, hipR, J.knee, J.ankle, J.toe);
-    if (legs && part === 'thigh') { P('hl', 8, hipR, J.knee); if (f) P('hl', 8, hipL, J.knee2); }
-    if (legs && part === 'shin') { P('hl', 8, J.knee, J.ankle); if (f) P('hl', 8, J.knee2, J.ankle2); }
-    if (part === 'glute') { C('hl', f ? J.hip : add(J.hip, [-1, 1]), f ? 8 : 7.5, true); }
-    P('body', 6.5, J.sh, J.el, J.hand);
-    if (part === 'uarm') { P('hl', 6.5, J.sh, J.el); if (f) P('hl', 6.5, J.sh2, J.el2); }
-    if (part === 'farm') { P('hl', 6.5, J.el, J.hand); if (f) P('hl', 6.5, J.el2, J.hand2); }
-    if (part === 'delt') { C('hl', J.sh, 5, true); if (f) C('hl', J.sh2, 5, true); }
+    if (legs) leg('body', hipR, '');
+    if (legs && part === 'thigh') { P('hl', 10, hipR, J.knee); if (f) P('hl', 10, hipL, J.knee2); }
+    if (legs && part === 'shin') { P('hl', 7.5, J.knee, J.ankle); if (f) P('hl', 7.5, J.knee2, J.ankle2); }
+    if (part === 'glute') { C('hl', f ? J.hip : add(J.hip, [-1.5, 1]), f ? 8.5 : 8, true); }
+    arm('body', J.sh, '');
+    if (part === 'uarm') { P('hl', 7.5, J.sh, J.el); if (f) P('hl', 7.5, J.sh2, J.el2); }
+    if (part === 'farm') { P('hl', 5.8, J.el, J.hand); if (f) P('hl', 5.8, J.el2, J.hand2); }
+    if (part === 'delt') { C('hl', J.sh, 5.4, true); if (f) C('hl', J.sh2, 5.4, true); }
     // moving equipment
     const py = J.p.py || 0;
     (def.mv || []).forEach(m => { const b = res(J, m.to); P('eq', m.w || 3, res(J, m.from), m.py ? add(b, [0, py]) : b); });
@@ -312,8 +320,18 @@ const Anim = (() => {
       return `<circle class="f-${s.cls}${s.fill ? ' fill' : ''}" r="${s.v[2]}" cx="${animate ? cx[0] : r1(s.v[0])}" cy="${animate ? cy[0] : r1(s.v[1])}">${animate ? anim('cx', cx) + anim('cy', cy) : ''}</circle>`;
     }).join('');
     const st = (def.st || []).map(s => (s[0] === 'L' ? `<path class="f-st" stroke-width="${s[5] || 3}" d="M${s[1]} ${s[2]}L${s[3]} ${s[4]}"/>` : s[0] === 'R' ? `<rect class="f-st fill" x="${s[1]}" y="${s[2]}" width="${s[3]}" height="${s[4]}" rx="2"/>` : `<circle class="f-st fill" cx="${s[1]}" cy="${s[2]}" r="${s[3]}"/>`)).join('');
+    // frame the figure: fit the view to everything that is drawn so the body fills the box
+    let x0 = 1e9, x1 = -1e9, y0 = 1e9;
+    const see = (x, y, r) => { x0 = Math.min(x0, x - r); x1 = Math.max(x1, x + r); y0 = Math.min(y0, y - r); };
+    fr.forEach(f => f.forEach(sh => { if (sh.k === 'P') sh.v.forEach(q => see(q[0], q[1], sh.w / 2)); else see(sh.v[0], sh.v[1], sh.v[2]); }));
+    (def.st || []).forEach(q => { if (q[0] === 'L') { see(q[1], q[2], 3); see(q[3], q[4], 3); } else if (q[0] === 'R') { see(q[1], q[2], 0); see(q[1] + q[3], q[2] + q[4], 0); } else see(q[1], q[2], q[3]); });
+    const FLOOR = 140, LBL = still ? 4 : 15;
+    let h = Math.max(104, FLOOR - y0 + 8) + LBL, w = Math.max(x1 - x0 + 16, h * 1.45);
+    if (w > h * 1.45) h = w / 1.45;
+    const cx = (x0 + x1) / 2, vx = r1(cx - w / 2), vy = r1(FLOOR + LBL - h);
+    const phase = still ? '' : ['lift', 'lower'].map((k, n) => `<text class="f-phase f-${k}" x="${r1(cx)}" y="${FLOOR + 11.5}" text-anchor="middle" opacity="${n ? 0 : 1}">${n ? '▼ ' : '▲ '}${(opts.phases || ['', ''])[n]}<animate attributeName="opacity" dur="${DUR}s" repeatCount="indefinite" calcMode="discrete" keyTimes="0;${r3((T_UP + T_HOLD * 0.5) / DUR)}" values="${n ? '0;1' : '1;0'}"/></text>`).join('');
     const body = still ? `<g opacity=".28">${draw(fr[0], false)}</g>${draw(fr[N], false)}` : draw(fr[0], true);
-    return `<svg class="fig" viewBox="0 0 200 146" role="img" aria-label="${opts.label || ''}"><path class="f-floor" d="M14 140H186"/>${st}${body}</svg>`;
+    return `<svg class="fig" viewBox="${vx} ${vy} ${r1(w)} ${r1(h)}" role="img" aria-label="${opts.label || ''}" data-a="figToggle"><path class="f-floor" d="M${r1(cx - w / 2 + 8)} ${FLOOR}H${r1(cx + w / 2 - 8)}"/>${st}${body}${phase}</svg>`;
   }
   return { svg, has: ex => !!(MAP[ex.id] || BY_MUSCLE[ex.m]), MAP, A, DUR };
 })();

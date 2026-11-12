@@ -9,7 +9,8 @@ Offline trener za trening z utežmi (PWA). Načrtuje treninge glede na tvoj čas
 - **Prikaz izvedbe**: animirana figura za vsako vajo (gib v priporočenem tempu, označena ciljna mišica), deluje brez povezave.
 - **Aktivni trening**: napovedan konec, priprava → ogrevanje → izvedba → vpis seta → počitek, hitri namigi za težo, kalkulator plošč, elastike in vaje s pomočjo, opombe, zgodovina vaje, celozaslonski način, premor, ocena težavnosti, rekordi.
 - **Koledar in statistika**: opravljeni in načrtovani dnevi, ocena uspešnosti, doslednost, rekordi, volumen po mišicah, napredek e1RM, telesna teža, težavnost; obdobja od tedna do celotne zgodovine.
-- **Ostalo**: slovenščina/angleščina, svetla/temna tema, kg/lbs (tudi po vajah), lastne vaje, vaje, ki se jim izogibaš, izvoz/uvoz podatkov, vodiči ob prvi uporabi.
+- **Obvestila**: sistemsko obvestilo ob izteku časovnika počitka ali ogrevanja (prek service workerja, brez strežnika).
+- **Ostalo**: slovenščina/angleščina, temna (privzeta)/svetla tema, izklop vodičev, kg/lbs (tudi po vajah), lastne vaje, vaje, ki se jim izogibaš, izvoz/uvoz podatkov, vodiči ob prvi uporabi.
 
 ## Zagon na računalniku
 ```
@@ -30,7 +31,7 @@ Glej [NAMESTITEV.md](NAMESTITEV.md) (Samsung Galaxy, One UI 9).
 ## Privzete odločitve
 - **Tehnologija:** spletna aplikacija (PWA) v čistem JavaScriptu, brez orodij za gradnjo. Namesti se iz brskalnika in deluje brez povezave.
 - **Podatki:** samo lokalno v napravi (`localStorage`), z izvozom in uvozom varnostne kopije.
-- **Videz:** svetla, minimalistična tema z modrim poudarkom; temna tema je na voljo v nastavitvah.
+- **Videz:** temna, minimalistična tema z modrim poudarkom; svetla tema je na voljo v nastavitvah.
 
 ## Kaj ni vključeno
 Funkcije, ki potrebujejo strežnik ali drugo napravo: prijava in račun, naročnine, sinhronizacija med napravami, aplikacija za uro in video posnetki vaj. Namesto videa izvedbo pokaže animirana figura (`js/anim.js`); v oknu z informacijami o vaji je še povezava do iskanja videa na spletu.

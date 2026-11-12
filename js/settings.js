@@ -49,7 +49,7 @@
     <button class="btn secondary" data-a="clearTours">${t('pref.clearTours')}</button>
     <p class="hint">${t('pref.applyNext')}</p>`;
   A.afterSet = (path, v) => {
-    if (path.startsWith('settings.') && !path.startsWith('settings.theme') && !path.startsWith('settings.prefs.hideVideos') && !path.startsWith('settings.prefs.sound')) st().draft = null;
+    if (path.startsWith('settings.') && !path.startsWith('settings.theme') && !path.startsWith('settings.prefs.hideVideos') && !path.startsWith('settings.prefs.sound') && !path.startsWith('settings.prefs.tutorials') && !path.startsWith('settings.prefs.notifications')) st().draft = null;
     if (path === 'settings.units' || path === 'settings.envId') Engine.clearCache();
     if (path === 'settings.schedule.specificDays' && v && !(S().schedule.days || []).length) S().schedule.days = [0, 2, 4];
     if (path === 'settings.schedule.specificDays' || path === 'settings.schedule.cyclic') st().nextAt = null;
@@ -403,8 +403,10 @@
     ${q(t('set.theme'))}${App.seg('settings.theme', [['system', t('theme.system')], ['light', t('theme.light')], ['dark', t('theme.dark')]])}
     ${q(t('set.units'))}${App.seg('settings.units', [['kg', 'kg'], ['lb', 'lbs']])}${hint(t('units.hint'))}
     ${q(t('set.lengthUnits'))}${App.seg('settings.lengthUnits', [['cm', 'cm'], ['in', 'in']])}
+    ${App.toggleRow('settings.prefs.tutorials', t('pref.tutorials'), t('pref.tutorials.d'))}
+    ${App.toggleRow('settings.prefs.notifications', t('pref.notifications'), t('pref.notifications.d'))}
     ${q(t('set.notifPerm'))}<button class="btn secondary" data-a="askNotif">${t('set.notifBtn')}</button>${hint(t('set.notifHint'))}`;
-  A.askNotif = () => { if (!('Notification' in window)) { App.notice(t('notice'), t('set.notifNA')); return; } Notification.requestPermission().then(p => App.notice(t('notice'), p === 'granted' ? t('set.notifOk') : t('set.notifDenied'))); };
+  A.askNotif = () => { if (!('Notification' in window)) { App.notice(t('notice'), t('set.notifNA')); return; } Notification.requestPermission().then(p => { if (p === 'granted') { App.notify(t('set.notifTest')); App.notice(t('notice'), t('set.notifOk')); } else App.notice(t('notice'), t('set.notifDenied')); }); };
 
   // ---------- Data ----------
   P.data = () => `${App.pageHead(t('menu.data'))}${hint(t('data.hint'))}

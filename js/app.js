@@ -165,8 +165,9 @@ const App = (() => {
     const th = S().theme || 'system';
     const dark = th === 'dark' || (th === 'system' && window.matchMedia && window.matchMedia('(prefers-color-scheme: dark)').matches);
     document.documentElement.dataset.theme = dark ? 'dark' : 'light';
+    try { localStorage.setItem('liftlab.theme', dark ? 'dark' : 'light'); } catch (e) { /* ignore */ }
     const meta = document.querySelector('meta[name=theme-color]');
-    if (meta) meta.content = dark ? '#0f1419' : '#f5f7fa';
+    if (meta) meta.content = dark ? '#0b0f14' : '#f5f7fa';
   }
   function render() {
     document.documentElement.lang = S().lang;
@@ -265,7 +266,7 @@ const App = (() => {
 
   // ---------- tours ----------
   function startTour(key, steps) {
-    if (S().tours[key]) return;
+    if (S().prefs.tutorials === false || S().tours[key]) return;
     ui.tour = { key, steps, i: 0 };
     showTour();
   }
@@ -289,12 +290,14 @@ const App = (() => {
         <small class="muted">${tr.i + 1} / ${tr.steps.length}</small>
         <h3>${step.title}</h3><p>${step.text}</p>
         <div class="btn-row"><button class="btn secondary" data-a="tourBack" ${tr.i === 0 ? 'disabled' : ''}>${t('back')}</button><button class="btn primary" data-a="tourNext">${tr.i === tr.steps.length - 1 ? t('done') : t('next')}</button></div>
+        <button class="tour-off" data-a="tourOff">${t('tour.off')}</button>
       </div>`;
   }
   Object.assign(A, {
     tourNext() { if (ui.tour) { ui.tour.i++; showTour(); } },
+    tourOff() { S().prefs.tutorials = false; save(); const box = document.getElementById('tour'); if (box) box.remove(); ui.tour = null; notice(t('notice'), t('tour.offDone')); },
     tourBack() { if (ui.tour) { ui.tour.i = Math.max(0, ui.tour.i - 1); showTour(); } },
-    async tourClose() { if (!ui.tour) return; if (await confirmDlg(t('tour.exit'), t('tour.exitQ'), t('tour.exitBtn'))) { ui.tour.i = ui.tour.steps.length; showTour(); } }
+    async tourClose() { if (!ui.tour) return; if (await confirmDlg(t('tour.exit'), t('tour.exitQ'), t('tour.exitBtn')) && ui.tour) { ui.tour.i = ui.tour.steps.length; showTour(); } }
   });
 
   // ---------- audio / vibration / wake lock / notifications ----------
@@ -319,9 +322,28 @@ const App = (() => {
   function alertUser(msg, kind) {
     beep(kind);
     if (navigator.vibrate) navigator.vibrate(kind === 'pr' ? [120, 60, 120, 60, 300] : [250, 120, 250, 120, 400]);
-    if (S().prefs.notifications && document.hidden && 'Notification' in window && Notification.permission === 'granted') {
-      try { new Notification('LiftLab', { body: msg, tag: 'liftlab' }); } catch (e) { /* ignore */ }
-    }
+    if (document.hidden) notify(msg);
+  }
+  const canNotify = () => S().prefs.notifications && 'Notification' in window && Notification.permission === 'granted';
+  /** system notification; goes through the service worker because Android does not allow `new Notification()` */
+  function notify(msg) {
+    if (!canNotify()) return;
+    const opts = { body: msg, tag: 'liftlab-timer', renotify: true, icon: 'icons/icon-192.png', badge: 'icons/icon-192.png', vibrate: [250, 120, 250, 120, 400] };
+    const plain = () => { try { new Notification('LiftLab', opts); } catch (e) { /* ignore */ } };
+    if ('serviceWorker' in navigator && navigator.serviceWorker.controller) navigator.serviceWorker.ready.then(r => r.showNotification('LiftLab', opts)).catch(plain);
+    else plain();
+  }
+  /**
+   * Hands the end time of the running timer to the service worker, which shows the notification even when the
+   * page is frozen in the background (phone locked, another app open). `at` = null cancels it.
+   */
+  let scheduledAt = null;
+  function scheduleTimerAlert(at, msg) {
+    const want = at && canNotify() ? at : null;
+    if (want === scheduledAt) return;
+    scheduledAt = want;
+    const sw = 'serviceWorker' in navigator && navigator.serviceWorker.controller;
+    if (sw) sw.postMessage(want ? { type: 'timer', at: want, body: msg } : { type: 'timer-cancel' });
   }
   function requestNotifications() {
     if ('Notification' in window && Notification.permission === 'default') { try { Notification.requestPermission(); } catch (e) { /* ignore */ } }
@@ -392,6 +414,6 @@ const App = (() => {
     exName, mName, eqName, workoutName, fmtNum, unitsFor, unitLbl, unitW, lbMode, wVal, kgFrom, fmtW, bandFor, fmtBW, fmtH, fmtClock, signedClock, fmtHM, rirStr, fmtDate, fmtDateLong, fmtTime, ytUrl,
     chip, seg, yesNo, radios, hint, q, toggleRow, pageHead, menuRow, getPath, setPath, parseV, keepScroll,
     go, back, render, applyTheme, openSheet, refreshSheet, closeSheet, dialog, closeDialog, confirmDlg, notice, numberSheet, textSheet,
-    startTour, beep, alertUser, requestNotifications, requestWakeLock, releaseWakeLock, tickers, tick
+    startTour, beep, alertUser, notify, scheduleTimerAlert, requestNotifications, requestWakeLock, releaseWakeLock, tickers, tick
   };
 })();
