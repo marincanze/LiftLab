@@ -40,14 +40,17 @@ const Engine = (() => {
     const train = s.musclesToTrain && s.musclesToTrain.length ? s.musclesToTrain : DEFAULT_TRAIN;
     return train.filter(m => !used.has(m));
   }
+  /** planned training days per week */
+  function daysPerWeek(st) {
+    const sc = st.settings.schedule;
+    const on = sc.cycleOn || 1;
+    return sc.cyclic ? 7 * on / (on + (sc.cycleOff || 0)) : (sc.specificDays && sc.days && sc.days.length ? sc.days.length : (sc.daysPerWeek || 4));
+  }
   /** how many times per week the routine trains muscle `m` */
   function weeklyFreq(st, m) {
     const r = routine(st);
     if (!r.length) return 0;
-    const sc = st.settings.schedule;
-    const on = sc.cycleOn || 1;
-    const days = sc.cyclic ? 7 * on / (on + (sc.cycleOff || 0)) : (sc.specificDays && sc.days && sc.days.length ? sc.days.length : (sc.daysPerWeek || 4));
-    return r.filter(w => w.muscles.includes(m)).length / r.length * days;
+    return r.filter(w => w.muscles.includes(m)).length / r.length * daysPerWeek(st);
   }
   /**
    * Large muscle that the routine trains only about once a week. Weekly volume drives growth and frequency
@@ -69,8 +72,14 @@ const Engine = (() => {
   function trainedDays(st) { return new Set(st.history.map(h => dayStart(h.date))); }
   /** is `ts` a planned training day according to the schedule */
   function isTrainingDay(st, ts) {
-    const sc = st.settings.schedule;
     const d0 = dayStart(ts);
+    const mv = st.moved || {};          // { plannedDay: newDay } — single workouts moved in the calendar
+    if (mv[d0]) return false;
+    for (const k in mv) if (mv[k] === d0) return true;
+    return basePlanned(st, d0);
+  }
+  function basePlanned(st, d0) {
+    const sc = st.settings.schedule;
     if (sc.cyclic) {
       const start = dayStart(sc.startDate || st.createdAt || Date.now());
       const n = Math.round((d0 - start) / DAY);
@@ -120,18 +129,47 @@ const Engine = (() => {
   }
 
   // ================= DELOAD =================
+  /**
+   * Signs of accumulated fatigue since the last deload: an exercise counts as stalled when its last two sessions
+   * were both below its earlier best; sessions rated very hard make the signal more sensitive.
+   */
+  function fatigueSignal(st, now) {
+    const bw = st.settings.bodyweight;
+    const since = Math.max(st.lastDeloadAt || 0, now - 42 * DAY);
+    const hs = st.history.filter(h => h.date > since && h.date <= now && !h.deload);
+    const out = { stalled: 0, tracked: 0, hard: false, on: false };
+    if (hs.length < 4) return out;
+    const byEx = {};
+    hs.forEach(h => h.items.forEach(it => { const ex = EX[it.exId]; if (ex && it.sets.length) (byEx[it.exId] = byEx[it.exId] || []).push(bestNormE1(ex, it.sets, bw)); }));
+    Object.values(byEx).forEach(v => {
+      const n = v.length;
+      if (n < 3) return;
+      out.tracked++;
+      const before = Math.max(...v.slice(0, n - 2));
+      if (v[n - 1] < before * 0.985 && v[n - 2] < before * 0.995) out.stalled++;
+    });
+    const rated = hs.slice(-3).map(h => h.difficulty).filter(d => d != null);
+    out.hard = rated.length >= 2 && rated.reduce((a, b) => a + b, 0) / rated.length >= 8;
+    const share = out.tracked ? out.stalled / out.tracked : 0;
+    out.on = out.tracked >= 3 && (share >= 0.5 || (out.hard && share >= 0.3));
+    return out;
+  }
+  /**
+   * Deloads are taken when needed rather than on a fixed calendar: a planned week off did not improve hypertrophy
+   * and slightly hurt strength (Coleman et al. 2024). The app suggests one when fatigue shows, or after a long
+   * stretch without one; the user starts it.
+   */
   function deloadState(st, now) {
     const s = st.settings;
-    const interval = s.experience === '0-6m' || s.experience === '6-12m' ? 8 : 6;   // weeks
     const start = st.createdAt || now;
-    let lastDeload = st.lastDeloadAt || (s.lastDeloadWeeks != null ? start - s.lastDeloadWeeks * 7 * DAY : start);
-    if (s.firstWeekDeload && !st.firstDeloadDone) {
-      if (now - start < 7 * DAY) return { deloading: true, weeksSince: 0, nextIn: interval, reason: 'first' };
-    }
-    const weeks = (now - lastDeload) / (7 * DAY);
-    if (weeks >= interval && weeks < interval + 1) return { deloading: true, weeksSince: Math.floor(weeks), nextIn: 0 };
-    if (weeks >= interval + 1) { st.lastDeloadAt = now; return { deloading: false, weeksSince: 0, nextIn: interval }; }
-    return { deloading: false, weeksSince: Math.floor(weeks), nextIn: Math.max(0, Math.ceil(interval - weeks)) };
+    if (s.firstWeekDeload && !st.firstDeloadDone && now - start < 7 * DAY) return { deloading: true, weeksSince: 0, reason: 'first' };
+    if (st.deloadUntil && now < st.deloadUntil) return { deloading: true, weeksSince: 0, reason: 'need', until: st.deloadUntil };
+    const last = st.lastDeloadAt || (s.lastDeloadWeeks != null ? start - s.lastDeloadWeeks * 7 * DAY : start);
+    const weeks = Math.max(0, (now - last) / (7 * DAY));
+    const signal = weeks >= 3 ? fatigueSignal(st, now) : { stalled: 0, tracked: 0, hard: false, on: false };
+    const snoozed = st.deloadSnoozeAt && now < st.deloadSnoozeAt;
+    const suggest = snoozed ? null : signal.on ? 'fatigue' : weeks >= (level(s) === 'beginner' ? 12 : 10) ? 'time' : null;
+    return { deloading: false, weeksSince: Math.floor(weeks), suggest, signal };
   }
 
   // ================= PROFILE FACTORS =================
@@ -734,7 +772,7 @@ const Engine = (() => {
   }
 
   return {
-    LB, FATIGUE, DAY, addDays, uid, clamp, level, recommendedType, templateWorkouts, routine, currentWorkout, unusedMuscles, routineValid, weeklyFreq,
+    LB, FATIGUE, DAY, addDays, uid, clamp, level, recommendedType, templateWorkouts, routine, currentWorkout, unusedMuscles, routineValid, weeklyFreq, daysPerWeek, basePlanned, fatigueSignal,
     dayStart, weekday, isTrainingDay, nextWorkoutAt, budgetFor, consecutiveTrained, restRecommended, deloadState, recovery,
     env, available, injury, disliked, score, ranked, candidates, restFor, minRest, rirFor, repRangeFor, setDur, transition, warmupCount, estimate, baseSets,
     buildPlan, finalize, exPref, setExPref, variantsFor, primaryEquip, equipOptions, machineCfg, barWeightFor,

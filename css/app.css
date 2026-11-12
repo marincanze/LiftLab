@@ -441,6 +441,46 @@ details.acc[open] summary::after { content: '⌃'; }
 :root[data-theme="dark"] .card { box-shadow: 0 1px 0 rgba(255,255,255,.03) inset; }
 :root[data-theme="dark"] .vbox { background: linear-gradient(180deg, #1a222d, #121820); border-color: var(--line); }
 .fig { cursor: pointer; }
-.fig .f-phase { font-size: 8.5px; font-weight: 700; letter-spacing: .6px; fill: var(--muted); }
-.fig .f-phase.f-lift { fill: var(--acc-text); }
 .fig.paused { opacity: .75; }
+
+/* last result, rest view */
+.lastp { display: flex; gap: 8px; align-items: flex-start; margin: 12px 0 0; padding: 9px 12px; border-radius: 10px; background: var(--acc-soft); font-size: 14px; line-height: 1.35; }
+.lastp svg { flex: none; width: 16px; height: 16px; margin-top: 2px; color: var(--acc-text); }
+.lastp b { color: var(--acc-text); }
+.lastp.none { background: var(--card2); color: var(--muted); font-size: 13px; }
+.rest-big { margin-top: 14px; padding: 14px 8px 12px; border-radius: 14px; background: var(--card2); text-align: center; }
+.rest-big label { display: block; font-size: 13px; color: var(--muted); margin-bottom: 4px; }
+.rest-row { display: flex; align-items: center; justify-content: space-between; gap: 10px; }
+.rest-row .round { width: 52px; height: 52px; background: var(--card); color: var(--acc-text); border: 1px solid var(--line); font-weight: 700; font-size: 15px; }
+.timer.xl { font-size: 64px; letter-spacing: -2px; }
+.timer.xl.over { color: var(--ok); }
+/* weekly plan */
+.wk-link { margin-top: 8px; padding-left: 0; display: inline-flex; align-items: center; gap: 4px; }
+.wk-link svg { width: 16px; height: 16px; }
+.wkp-card { padding: 0; }
+.wkp-card summary { display: flex; align-items: center; gap: 12px; padding: 14px; cursor: pointer; list-style: none; }
+.wkp-card summary::-webkit-details-marker { display: none; }
+.wkp-card summary > span:last-child { display: flex; flex-direction: column; gap: 2px; }
+.wkp-card summary .num { width: 30px; height: 30px; border-radius: 50%; background: var(--acc-soft); color: var(--acc-text); display: grid; place-items: center; font-weight: 700; flex: none; }
+.wk-row { display: flex; width: 100%; justify-content: space-between; align-items: center; gap: 10px; padding: 10px 14px; background: none; border: 0; border-top: 1px solid var(--line); color: var(--text); text-align: left; font-size: 14px; cursor: pointer; }
+.wk-row span { display: flex; flex-direction: column; }
+.wk-row b { white-space: nowrap; font-variant-numeric: tabular-nums; }
+/* exercise library */
+.scroll-x { flex-wrap: nowrap; overflow-x: auto; padding-bottom: 4px; margin-bottom: 8px; }
+.scroll-x .chip { flex: none; }
+.lib-row { display: flex; width: 100%; align-items: center; gap: 12px; padding: 8px 10px; margin-bottom: 6px; background: var(--card); border: 1px solid var(--line); border-radius: 12px; color: var(--text); text-align: left; cursor: pointer; }
+.lib-row > span:nth-child(2) { flex: 1; display: flex; flex-direction: column; gap: 2px; min-width: 0; }
+.lib-row small { color: var(--muted); font-size: 12px; }
+.lib-row.na { opacity: .55; }
+.lib-fig { width: 62px; height: 46px; flex: none; border-radius: 8px; background: var(--card2); overflow: hidden; }
+.lib-row > svg { flex: none; color: var(--muted); }
+/* body measurements */
+.ms-grid { display: grid; grid-template-columns: repeat(3, 1fr); gap: 8px; margin: 8px 0 10px; }
+.ms-cell { display: flex; flex-direction: column; gap: 2px; padding: 10px; border-radius: 12px; background: var(--card2); border: 1px solid transparent; color: var(--text); text-align: left; cursor: pointer; }
+.ms-cell.on { border-color: var(--acc); }
+.ms-cell label { font-size: 12px; color: var(--muted); }
+.ms-cell b { font-size: 18px; }
+.ms-cell small { font-size: 12px; color: var(--muted); }
+.ms-cell small.up { color: var(--ok); } .ms-cell small.down { color: var(--warn); }
+.ms-form { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; margin: 10px 0 14px; }
+.ms-form label { display: flex; flex-direction: column; gap: 4px; font-size: 13px; color: var(--muted); }

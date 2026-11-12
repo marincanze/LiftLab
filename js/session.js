@@ -55,13 +55,22 @@
     if (it.variant) out.push(`<button class="chip var" data-a="pickVariant" data-i="${i}">${ICON.building} ${esc(it.variant)}</button>`);
     return out.join('');
   }
+  /** what was done the last time this exercise was trained — the number to beat */
+  function lastLine(ex, it) {
+    const lp = E.lastPerf(ex.id, st().history, it && it.variant);
+    if (!lp) return `<p class="lastp none">${ICON.clock}<span>${t('last.none')}</span></p>`;
+    const same = lp.sets.every(x => Math.abs(x.w - lp.sets[0].w) < 1e-6);
+    const reps = x => (x.repsR != null ? x.repsL + '/' + x.repsR : x.reps);
+    const txt = same ? `${ex.load === 'bw' && lp.sets[0].w <= 0 && !ex.assist ? '' : App.fmtW(lp.sets[0].w, ex) + ' × '}${lp.sets.map(reps).join(', ')}` : lp.sets.map(x => `${App.fmtW(x.w, ex)} × ${reps(x)}`).join(' · ');
+    return `<p class="lastp">${ICON.clock}<span><b>${t('last.time')}</b> ${txt} <small class="muted">· ${App.fmtDate(lp.date)}</small></span></p>`;
+  }
   function videoArea(i, ex, canSwap) {
     const note = noteFor(ex.id);
     const tools = `${canSwap ? `<button class="round sm" data-a="swap" data-i="${i}" aria-label="${t('swap')}">${ICON.swap}</button>` : ''}<button class="round sm" data-a="info" data-id="${ex.id}" aria-label="${t('info')}">${ICON.info}</button>`;
     const noteHtml = note ? `<p class="exnote">${ICON.note} ${esc(note)}</p>` : '';
     if (S().prefs.hideVideos) return `<div class="vbar"><button class="round sm" data-a="toggleVideo" aria-label="${t('video.show')}">${ICON.eye}</button><span class="vlbl">${t('video.hidden')}</span>${tools}</div>${noteHtml}`;
     return `<div class="vbox"><button class="round sm tl" data-a="toggleVideo" aria-label="${t('video.hide')}">${ICON.eyeOff}</button><div class="vtools">${tools}</div>
-        ${Anim.svg(ex, { label: App.exName(ex.id), phases: [t('anim.lift'), t('anim.lower')] })}</div><p class="vcue"><b>${t('anim.tempo')}</b>${ex.cue ? ' ' + esc(ex.cue[S().lang] || ex.cue.en) : ''}</p>${noteHtml}`;
+        ${Anim.svg(ex, { label: App.exName(ex.id) })}</div><p class="vcue"><b>${t('anim.tempo')}</b>${ex.cue ? ' ' + esc(ex.cue[S().lang] || ex.cue.en) : ''}</p>${noteHtml}`;
   }
   function cardHead(it, i, ex, opts) {
     const fav = st().favorites.includes(ex.id);
@@ -73,6 +82,13 @@
       </div>`;
   }
   A.figToggle = (d, el) => { const g = el.closest('svg'); if (!g || !g.pauseAnimations) return; if (g.animationsPaused()) g.unpauseAnimations(); else g.pauseAnimations(); g.classList.toggle('paused', g.animationsPaused()); };
+  A.restAdj = d => {
+    const a = st().active; if (!a || !a.restEnd) return;
+    const now = Date.now();
+    a.restEnd = Math.max(now, Math.max(a.restEnd, now) + (+d.d) * 1000);
+    a.beeped = a.restEnd <= now;
+    App.save(); App.tick();
+  };
   A.toggleVideo = () => { S().prefs.hideVideos = !S().prefs.hideVideos; App.save(); App.keepScroll(App.render); };
   A.expand = d => { const i = +d.i; ui.expanded = ui.expanded === i ? -1 : i; App.keepScroll(App.render); };
   A.weightTap = d => {
@@ -100,7 +116,7 @@
     d.items.forEach((it, i) => { it._i = i; });
     return `<div class="row-between"><h1>${t('tab.train')}</h1><button class="icon-btn circ" data-a="replan" aria-label="replan">${ICON.sparkle}</button></div>
       <div class="card stat" data-a="editNext" id="tour-next"><label>${t('w.nextIn')}</label><div class="big hm" data-tick="nextIn">${nextInHtml(now)}</div><small class="muted">${App.fmtDateLong(at)} · ${App.fmtTime(at)}</small><span class="edit">${ICON.edit}</span></div>
-      ${dl.deloading ? `<div class="card note-card"><b>${t('w.deloadT')}</b><p>${t('w.deload')}</p></div>` : ''}
+      ${App.deloadCard(dl)}
       ${rest ? `<div class="card note-card warn"><b>${t('w.restT')}</b><p>${t('w.rest')}</p></div>` : ''}
       <div class="grid2">
         <div class="card stat" data-a="pickWorkout"><label>${t('w.workout')}</label><div class="title-lg">${esc(App.workoutName(w))}</div><span class="edit">${ICON.edit}</span></div>
@@ -118,12 +134,13 @@
       ${d.items.length ? d.items.map((it, i) => draftCard(it, i)).join('') : `<p class="center muted">${t('w.empty')}</p>`}
       <p class="center muted">${t('w.notEnough')} <a href="#" data-a="extend" class="link">${t('w.extend')}</a></p>
       <div class="btn-row"><button class="btn secondary" data-a="addExercise">${t('w.add')}</button><button class="btn secondary" data-a="reorder">${t('w.reorder')}</button></div>
+      <button class="btn secondary" data-a="go" data-page="weekPlan">${t('wk.title')}</button>
       <button class="btn warn" data-a="skipSession">${t('w.skip')}</button>`;
   }
   function draftCard(it, i) {
     const ex = EX[it.exId];
     const open = ui.expanded === i;
-    return `<div class="card ex ${open ? 'open' : ''} ${it.ss ? 'ss-' + it.ss : ''}">${cardHead(it, i, ex, {})}<div class="chips">${exChips(it, ex, i)}</div>${open ? videoArea(i, ex, true) : ''}</div>`;
+    return `<div class="card ex ${open ? 'open' : ''} ${it.ss ? 'ss-' + it.ss : ''}">${cardHead(it, i, ex, {})}<div class="chips">${exChips(it, ex, i)}</div>${open ? lastLine(ex, it) + videoArea(i, ex, true) : ''}</div>`;
   }
   V.train = () => (st().active ? (ui.focus ? viewFocus() : viewActive()) : viewDraft());
 
@@ -200,7 +217,9 @@
     const open = focus || cur || ui.expanded === i;
     let body = '';
     if (open) {
-      if (!(cur && (it.phase === 'log' || it.phase === 'drops'))) body += videoArea(i, ex, !it.logged.length && !done);
+      body += lastLine(ex, it);
+      // while logging or resting the figure makes room for the numbers and the timer
+      if (!(cur && (it.phase === 'log' || it.phase === 'drops' || it.phase === 'rest'))) body += videoArea(i, ex, !it.logged.length && !done);
       body += setsTable(it, i, ex);
       if (!cur) {
         if (done) body += `<div class="btn-row"><button class="btn ghost" data-a="reopen" data-i="${i}">${t('a.addSet')}</button>${it.drops ? '' : `<button class="btn ghost" data-a="addDropsNow" data-i="${i}">${t('a.addDrops')}</button>`}</div>`;
@@ -242,10 +261,12 @@
     if (it.phase === 'rest') {
       const pred = E.predict(it, ex, s, it.weight);
       const partner = partnerOf(it);
-      return `<div class="panel p3" id="tour-rest">
-          <div><label data-tick="restLabel">${t('restNow')}</label><div class="timer" data-tick="rest"></div></div>
+      return `<div class="rest-big" id="tour-rest"><label data-tick="restLabel">${t('restNow')}</label>
+          <div class="rest-row"><button class="round" data-a="restAdj" data-d="-15" aria-label="-15 s">−15</button><div class="timer xl" data-tick="rest"></div><button class="round" data-a="restAdj" data-d="15" aria-label="+15 s">+15</button></div></div>
+        <div class="panel p3">
+          <div><label>${t('a.nextUp')}</label><div class="big">${k + 1}<small>/${it.sets}</small></div></div>
           <div><label>RIR</label><div class="big">${rirT}</div></div>${wBlock}
-          <div><label>${t('a.set')}</label><div class="big">${k + 1}<small>/${it.sets}</small></div></div>
+          <div><label>${t('c.reps')}</label><div class="big">${it.reps.join(' – ')}</div></div>
           ${est ? `<div><label>${t('a.estReps')}</label><div class="big ${pred < it.reps[0] || pred > it.reps[1] ? 'warn' : ''}">${pred}</div></div>` : '<div></div>'}
           ${partner ? `<div><label>${t('superset')}</label><div class="muted small">${esc(App.exName(partner.exId))}</div></div>` : '<div></div>'}</div>
         <div class="btn-row"><button class="btn secondary" data-a="finishEx" data-i="${i}">${t('a.finish')}</button><button class="btn primary" data-a="nextSet" data-i="${i}">${t('a.nextSet')}</button></div>`;
@@ -537,7 +558,7 @@
     const prev = st().history.map(h => h.items.find(i => i.exId === ex.id && i.sets.length)).filter(Boolean);
     const best = prev.length ? Math.max(...prev.map(p => E.bestNormE1(ex, p.sets, s.bodyweight))) : null;
     App.openSheet(() => `<div class="sheet-head"><h2>${esc(App.exName(ex.id))}</h2><button class="icon-btn circ" data-a="closeSheet">${ICON.x}</button></div>
-      <div class="vbox static">${Anim.svg(ex, { label: App.exName(ex.id), phases: [t('anim.lift'), t('anim.lower')] })}</div>
+      <div class="vbox static">${Anim.svg(ex, { label: App.exName(ex.id) })}</div>
       <p class="hint anim-hint">${t(ex.custom ? 'anim.custom' : 'anim.legend', { m: App.mName(ex.m) })}${ex.custom ? '' : ` <a href="${App.ytUrl(ex.id)}" target="_blank" rel="noopener">${t('video.watch')}</a>`}</p>
       <div class="chips">${chip('', ICON.target + ' ' + App.mName(ex.m), 'muscle')}${(ex.sec || []).map(m => chip('', App.mName(m))).join('')}</div>
       <details class="acc" open><summary>${t('info.equip')}</summary><div class="req">${reqHtml}</div></details>

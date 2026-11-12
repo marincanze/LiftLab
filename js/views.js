@@ -3,7 +3,7 @@
  * Tabs: Home (dashboard), Calendar, Stats (charts with date ranges).
  * ============================================================ */
 (function () {
-  const { A, V, ui, t, esc, ICON } = App;
+  const { A, V, P, ui, t, esc, ICON } = App;
   const st = () => App.st;
   const S = () => App.st.settings;
   const E = Engine;
@@ -47,7 +47,9 @@
       <button class="card stat full" data-a="tab" data-tab="train" id="tour-nextw"><label>${t('home.nextWorkout')}</label><div class="row-between"><div class="title-lg">${w ? esc(App.workoutName(w)) : '—'}</div><div class="big hm" data-tick="nextIn">${App.nextInHtml(now)}</div></div><small class="muted">${App.fmtDateLong(at)} · ${App.fmtTime(at)}</small></button>
       <div class="card" id="tour-sched"><div class="row-between"><label>${t('home.schedule')}</label><button class="btn ghost inline" data-a="wizStep" data-step="${App.stepIdx('days')}">${t('edit')}</button></div>
         <div class="weekrow">${days.map(d => `<div class="wd ${d.done ? 'done' : d.plan ? 'plan' : ''} ${d.today ? 'today' : ''}"><small>${d.lbl}</small><span>${d.done ? ICON.check : d.plan ? '●' : '·'}</span></div>`).join('')}</div>
-        <small class="muted">${sc.cyclic ? t('days.cycle', { on: sc.cycleOn, off: sc.cycleOff }) : t('home.daysPlanned', { n: sc.daysPerWeek })}${dl.deloading ? ` · <b class="warn">${t('home.deloading')}</b>` : ` · ${t('home.nextDeload', { n: dl.nextIn })}`}</small></div>
+        <small class="muted">${sc.cyclic ? t('days.cycle', { on: sc.cycleOn, off: sc.cycleOff }) : t('home.daysPlanned', { n: sc.daysPerWeek })}${dl.deloading ? ` · <b class="warn">${t('home.deloading')}</b>` : ` · ${t('home.sinceDeload', { n: dl.weeksSince })}`}</small>
+        <button class="btn ghost inline wk-link" data-a="go" data-page="weekPlan">${t('wk.title')} ${ICON.right}</button></div>
+      ${deloadCard(dl)}${backupCard(now)}
       <div class="grid2">
         <button class="card stat" data-a="editBW"><label>${t('home.weight')}</label><div class="big">${App.fmtBW(s.bodyweight)}<small>${App.unitW()}</small></div><span class="edit">${ICON.edit}</span></button>
         <button class="card stat" data-a="wizStep" data-step="${App.stepIdx('days')}"><label>${t('home.perWeek')}</label><div class="big">${sc.cyclic ? sc.cycleOn + '/' + (sc.cycleOn + sc.cycleOff) : sc.daysPerWeek}<small>${sc.cyclic ? t('home.perCycle') : t('home.workouts')}</small></div><span class="edit">${ICON.edit}</span></button>
@@ -56,6 +58,59 @@
       ${s.injuries.length ? `<button class="card inj-card" data-a="go" data-page="injuries"><span class="inj-ico">${ICON.bandage}</span><span><b>${t('home.inj')}</b><small>${t('home.injText')}</small></span>${ICON.right}</button>` : ''}
       ${App.completeness() < 100 ? `<button class="card inj-card prof" data-a="go" data-page="profile"><span class="inj-ico">${ICON.user}</span><span><b>${t('home.prof', { p: App.completeness() })}</b><small>${t('home.profText')}</small></span>${ICON.right}</button>` : ''}`;
   };
+  // ---------- deload on demand ----------
+  function deloadCard(dl) {
+    if (dl.deloading) return `<div class="card note-card"><b>${t('w.deloadT')}</b><p>${t(dl.reason === 'first' ? 'w.deloadFirst' : 'w.deload')}</p>${dl.reason === 'need' ? `<button class="btn ghost inline" data-a="deloadEnd">${t('dl.end')}</button>` : ''}</div>`;
+    if (!dl.suggest) return '';
+    return `<div class="card note-card warn"><b>${t('dl.suggestT')}</b><p>${dl.suggest === 'fatigue' ? t('dl.fatigue', { a: dl.signal.stalled, b: dl.signal.tracked }) + (dl.signal.hard ? ' ' + t('dl.hard') : '') : t('dl.time', { n: dl.weeksSince })}</p>
+      <div class="btn-row"><button class="btn secondary" data-a="deloadSnooze">${t('dl.later')}</button><button class="btn primary" data-a="deloadStart">${t('dl.start')}</button></div></div>`;
+  }
+  App.deloadCard = deloadCard;
+  const replan = () => { st().draft = null; App.save(); App.keepScroll(App.render); };
+  A.deloadStart = () => { const now = Date.now(); st().deloadUntil = now + 7 * DAY; st().lastDeloadAt = now + 7 * DAY; st().deloadSnoozeAt = null; replan(); };
+  A.deloadEnd = () => { st().deloadUntil = null; st().lastDeloadAt = Date.now(); replan(); };
+  A.deloadSnooze = () => { st().deloadSnoozeAt = Date.now() + 7 * DAY; replan(); };
+
+  // ---------- backup reminder ----------
+  function backupCard(now) {
+    if (st().history.length < 3) return '';
+    const last = Math.max(st().lastBackupAt || 0, st().backupSnoozeAt || 0) || st().history[0].date;
+    if (now - last < 21 * DAY) return '';
+    return `<div class="card note-card"><b>${t('bk.title')}</b><p>${t(st().lastBackupAt ? 'bk.text' : 'bk.never', { n: Math.floor((now - (st().lastBackupAt || 0)) / DAY), w: st().history.length })}</p>
+      <div class="btn-row"><button class="btn secondary" data-a="backupLater">${t('dl.later')}</button><button class="btn primary" data-a="export">${t('data.export')}</button></div></div>`;
+  }
+  A.backupLater = () => { st().backupSnoozeAt = Date.now(); App.save(); App.keepScroll(App.render); };
+
+  // ---------- WEEKLY PLAN ----------
+  P.weekPlan = () => {
+    const s = S(); const now = Date.now();
+    const r = E.routine(st());
+    const n = Math.max(1, Math.round(E.daysPerWeek(st())));
+    const dl = E.deloadState(st(), now);
+    const minutes = s.schedule.unlimitedTime ? 120 : (s.schedule.timePerDay || 60);
+    const vol = {}; MUSCLES.forEach(m => vol[m] = 0);
+    let total = 0;
+    const cards = [];
+    for (let k = 0; k < n && r.length; k++) {
+      const w = r[(st().rotation + k) % r.length];
+      const items = E.buildPlan(st(), w, minutes, { deload: dl.deloading });
+      const min = Math.round(E.estimate(items, s) / 60);
+      items.forEach(it => { const ex = EX[it.exId]; vol[ex.m] += it.sets; total += it.sets; (ex.sec || []).forEach(m => { if (vol[m] != null) vol[m] += it.sets * 0.5; }); });
+      cards.push(`<details class="card wkp-card" ${k === 0 ? 'open' : ''}><summary><span class="num">${k + 1}</span><span><b>${esc(App.workoutName(w))}</b><small class="muted">${items.length} ${t('wk.ex')} · ${items.reduce((a, i) => a + i.sets, 0)} ${t('st.sets')} · ${min} min</small></span></summary>
+        ${items.map(it => `<button class="wk-row" data-a="info" data-id="${it.exId}"><span>${esc(App.exName(it.exId))}<small class="muted">${App.mName(it.m)}</small></span><b>${it.sets} × ${it.reps.join('–')}</b></button>`).join('')}</details>`);
+    }
+    const trained = new Set(s.musclesToTrain || DEFAULT_TRAIN);
+    const low = MUSCLES.filter(m => trained.has(m) && MUSCLE_IMP[m] <= 2 && vol[m] < 6);
+    return `${App.pageHead(t('wk.title'))}
+      <p class="muted">${t('wk.intro', { n, t: minutes })}</p>
+      ${deloadCard(dl)}
+      ${cards.join('') || `<p class="muted">${t('w.noRoutine')}</p>`}
+      <div class="card"><h3 class="card-title">${t('wk.volume')}</h3><p class="hint">${t('wk.volumeText', { n: total })}</p>${volumeBars(vol, trained)}
+        ${low.length ? `<p class="warn-txt">${ICON.warn}<span>${t('wk.low')} ${low.map(App.mName).join(', ')}. ${t('wk.lowTip')}</span></p>` : ''}</div>
+      <div class="btn-row"><button class="btn secondary" data-a="wizStep" data-step="${App.stepIdx('days')}">${t('wk.editDays')}</button><button class="btn secondary" data-a="wizStep" data-step="${App.stepIdx('routine')}">${t('w.editRoutine')}</button></div>
+      ${dl.deloading ? '' : `<button class="btn ghost" data-a="deloadStart">${t('dl.startNow')}</button>`}`;
+  };
+
   A.seeWhatsNew = () => { S().whatsNewSeen = RELEASE_NOTES[0].v; App.save(); App.go('whatsNew'); };
   A.editBW = () => {
     const lb = App.lbMode();
@@ -103,7 +158,7 @@
     for (let d = 1; d <= days; d++) {
       const ts = new Date(m.y, m.m, d).getTime();
       const hs = done.get(ts);
-      const plan = ts > todayK && E.isTrainingDay(st(), ts) && ts >= E.dayStart(S().schedule.startDate || 0);
+      const plan = ts >= todayK && !hs && E.isTrainingDay(st(), ts) && ts >= E.dayStart(S().schedule.startDate || 0);
       cells.push(`<button class="cal-d ${hs ? 'done' : ''} ${plan ? 'plan' : ''} ${skipped.has(ts) ? 'skip' : ''} ${ts === todayK ? 'today' : ''} ${ts === sel ? 'sel' : ''}" data-a="calDay" data-ts="${ts}">${d}</button>`);
     }
     const selHs = done.get(sel) || [];
@@ -115,8 +170,32 @@
         <div class="legend"><span><i class="dot done"></i>${t('cal.done')}</span><span><i class="dot plan"></i>${t('cal.planned')}</span><span><i class="dot skip"></i>${t('cal.skipped')}</span></div>
       </div>
       <h3 class="sec-h">${App.fmtDateLong(sel)}</h3>
-      ${selHs.length ? selHs.map(h => histCard(h)).join('') : `<div class="card"><p class="muted">${sel > todayK ? (E.isTrainingDay(st(), sel) ? t('cal.scheduled') : t('cal.notScheduled')) : t('cal.noEntries')}</p>${sel > todayK && E.isTrainingDay(st(), sel) ? `<button class="btn ghost" data-a="wizStep" data-step="${App.stepIdx('days')}">${t('cal.editSchedule')}</button>` : ''}</div>`}`;
+      ${selHs.length ? selHs.map(h => histCard(h)).join('') : `<div class="card"><p class="muted">${sel >= todayK ? (E.isTrainingDay(st(), sel) ? t(movedIn(sel) ? 'cal.movedHere' : 'cal.scheduled', { d: movedIn(sel) ? App.fmtDate(+movedIn(sel)) : '' }) : (st().moved || {})[sel] ? t('cal.movedAway', { d: App.fmtDate(st().moved[sel]) }) : t('cal.notScheduled')) : t('cal.noEntries')}</p>
+        ${sel >= todayK && E.isTrainingDay(st(), sel) ? `<div class="btn-row"><button class="btn secondary" data-a="calMoveOpen">${t('cal.move')}</button>${movedIn(sel) ? `<button class="btn secondary" data-a="calMoveUndo" data-k="${movedIn(sel)}">${t('cal.moveBack')}</button>` : `<button class="btn ghost" data-a="wizStep" data-step="${App.stepIdx('days')}">${t('cal.editSchedule')}</button>`}</div>` : ''}
+        ${sel >= todayK && (st().moved || {})[sel] ? `<button class="btn secondary" data-a="calMoveUndo" data-k="${sel}">${t('cal.moveBack')}</button>` : ''}</div>`}`;
   };
+  /** the originally planned day whose workout was moved onto `day`, if any */
+  const movedIn = day => Object.keys(st().moved || {}).find(k => st().moved[k] === day);
+  A.calMoveOpen = () => {
+    const sel = ui.calSel || E.dayStart(Date.now());
+    const today = E.dayStart(Date.now());
+    const trained = new Set(st().history.map(h => E.dayStart(h.date)));
+    const opts = [];
+    for (let i = 0; i < 15 && opts.length < 10; i++) { const d = E.addDays(today, i); if (d !== sel && !E.isTrainingDay(st(), d) && !trained.has(d)) opts.push(d); }
+    App.openSheet(() => `<h2>${t('cal.moveT')}</h2><p class="muted small-p">${t('cal.moveHint', { d: App.fmtDateLong(sel) })}</p>
+      <div class="list">${opts.map(d => `<button class="list-row" data-a="calMoveTo" data-to="${d}"><span><b>${App.fmtDateLong(d)}</b></span>${ICON.right}</button>`).join('')}</div>
+      <button class="btn secondary" data-a="closeSheet">${t('cancel')}</button>`);
+  };
+  A.calMoveTo = d => {
+    const sel = ui.calSel || E.dayStart(Date.now()); const to = +d.to;
+    const mv = st().moved = st().moved || {};
+    const src = movedIn(sel) || sel;                 // moving an already moved workout keeps its original day as the key
+    if (+src === to) delete mv[src]; else mv[src] = to;
+    Object.keys(mv).forEach(k => { if (Math.max(+k, mv[k]) < E.addDays(Date.now(), -7)) delete mv[k]; });
+    st().nextAt = null; st().draft = null; ui.calSel = to;
+    App.save(); App.closeSheet(); App.render();
+  };
+  A.calMoveUndo = d => { const mv = st().moved || {}; const back = +d.k; delete mv[d.k]; st().nextAt = null; st().draft = null; ui.calSel = back; App.save(); App.render(); };
   A.calMove = d => { const m = ui.calM; const dt = new Date(m.y, m.m + (+d.d), 1); ui.calM = { y: dt.getFullYear(), m: dt.getMonth() }; App.render(); };
   A.calDay = d => { ui.calSel = +d.ts; App.keepScroll(App.render); };
   function histCard(h) {
@@ -185,6 +264,7 @@
       <div class="card"><h3 class="card-title">${t('st.volume')}</h3><p class="hint">${t('st.volumeText', { r: t('rangeL.' + r) })}</p>${volumeBars(perWeek, trained)}</div>
       <div class="card"><h3 class="card-title">${t('st.progress')}</h3>${prog}</div>
       <div class="card"><div class="row-between"><h3 class="card-title">${t('st.bw')}</h3><button class="btn ghost inline" data-a="editBW">${t('st.addBW')}</button></div><p class="hint">${t('st.bwText', { r: t('rangeL.' + r) })}</p>${bwPts.length ? lineChart(bwPts, App.unitW()) : `<p class="muted">${t('st.noBW')}</p>`}</div>
+      ${measuresCard(from, to)}
       <div class="card"><h3 class="card-title">${t('st.difficulty')}</h3><p class="hint">${t('st.difficultyText', { r: t('rangeL.' + r) })}</p>${diff.some(d => d.v != null) ? barChart(diff.map(d => ({ lbl: d.lbl, v: d.v || 0 })), '', 10) : `<p class="muted">${t('st.noData')}</p>`}</div>
       <div class="card"><h3 class="card-title">${t('st.injuries')}</h3><p class="hint">${t('st.injuriesText')}</p><div class="big">${s.injuries.length}</div><small class="muted">${s.injuries.map(i => t('loc.' + i.loc)).join(', ') || t('inj.none')}</small></div>
       <div class="card"><h3 class="card-title">${t('st.history')}</h3>${hs.length ? hs.slice().reverse().slice(0, 30).map(h => `<button class="hist-row" data-a="histOpen" data-id="${h.id}"><span><b>${esc(h.wname || '')}</b><small>${App.fmtDate(h.date)} · ${Math.round((h.end - h.date) / 60000)} min · ${h.items.reduce((a, i) => a + i.sets.length, 0)} ${t('st.sets')}</small></span>${ICON.right}</button>`).join('') : `<p class="muted">${t('st.noData')}</p>`}</div>`;
@@ -192,6 +272,38 @@
   A.statsRange = d => { ui.statsRange = d.r; App.keepScroll(App.render); };
   A.statsEx = (d, el) => { ui.statsEx = el.value; App.keepScroll(App.render); };
   A.histOpen = d => { const h = st().history.find(x => x.id === d.id); if (!h) return; App.openSheet(() => `<div class="sheet-head"><h2>${App.fmtDate(h.date)}</h2><button class="icon-btn circ" data-a="closeSheet">${ICON.x}</button></div>${histCard(h)}`); };
+
+  // ---------- body measurements ----------
+  const MEASURES = ['arm', 'chest', 'waist', 'hips', 'thigh', 'calf'];
+  const inch = () => S().lengthUnits === 'in';
+  const lenVal = cm => Math.round((inch() ? cm / 2.54 : cm) * 10) / 10;
+  function measuresCard(from, to) {
+    const log = st().measures || [];
+    const key = MEASURES.includes(ui.measure) ? ui.measure : 'arm';
+    const latest = k => { for (let i = log.length - 1; i >= 0; i--) if (log[i][k] != null) return log[i]; return null; };
+    const first = k => log.find(x => x[k] != null);
+    const pts = log.filter(x => x[key] != null && x.date >= from && x.date <= to).map(x => ({ x: x.date, y: lenVal(x[key]) }));
+    const u = inch() ? 'in' : 'cm';
+    return `<div class="card"><div class="row-between"><h3 class="card-title">${t('ms.title')}</h3><button class="btn ghost inline" data-a="measureOpen">${t('st.addBW')}</button></div><p class="hint">${t('ms.text')}</p>
+      ${log.length ? `<div class="ms-grid">${MEASURES.map(k => { const l = latest(k), f = first(k); const diff = l && f && l !== f ? lenVal(l[k]) - lenVal(f[k]) : null;
+        return `<button class="ms-cell ${k === key ? 'on' : ''}" data-a="measurePick" data-k="${k}"><label>${t('ms.' + k)}</label><b>${l ? App.fmtNum(lenVal(l[k])) : '—'}<small> ${l ? u : ''}</small></b>${diff != null ? `<small class="${diff > 0 ? 'up' : diff < 0 ? 'down' : ''}">${diff > 0 ? '+' : ''}${App.fmtNum(Math.round(diff * 10) / 10)}</small>` : '<small>&nbsp;</small>'}</button>`; }).join('')}</div>
+        ${pts.length > 1 ? lineChart(pts, u) : `<p class="muted small">${t('ms.oneMore')}</p>`}` : `<p class="muted">${t('ms.none')}</p>`}</div>`;
+  }
+  A.measurePick = d => { ui.measure = d.k; App.keepScroll(App.render); };
+  A.measureOpen = () => {
+    const log = st().measures || []; const last = log[log.length - 1] || {};
+    const u = inch() ? 'in' : 'cm';
+    App.openSheet(() => `<h2>${t('ms.title')}</h2><p class="muted small-p">${t('ms.hint')}</p>
+      <div class="ms-form">${MEASURES.map(k => `<label>${t('ms.' + k)} (${u})<input class="inp" type="number" inputmode="decimal" step="0.1" min="0" data-ms="${k}" placeholder="${last[k] != null ? App.fmtNum(lenVal(last[k])) : ''}"></label>`).join('')}</div>
+      <button class="btn primary" data-a="measureSave">${t('save')}</button><button class="btn secondary" data-a="closeSheet">${t('cancel')}</button>`);
+  };
+  A.measureSave = () => {
+    const entry = { date: Date.now() };
+    document.querySelectorAll('#sheet [data-ms]').forEach(el => { const v = Number(String(el.value).replace(',', '.')); if (v > 0 && v < 400) entry[el.dataset.ms] = Math.round((inch() ? v * 2.54 : v) * 10) / 10; });
+    if (Object.keys(entry).length < 2) { App.closeSheet(); return; }
+    st().measures = (st().measures || []).concat(entry);
+    App.save(); App.closeSheet(); App.keepScroll(App.render);
+  };
 
   function volumeBars(vol, trained) {
     const max = 24;
@@ -204,7 +316,7 @@
     const max = fixedMax || Math.max(1, ...data.map(d => d.v || 0));
     const n = data.length; const bw = Math.max(4, (W - P - 8) / n - 4);
     return `<svg viewBox="0 0 ${W} ${H}" class="chart" role="img">
-      ${[0, 0.5, 1].map(f => `<line x1="${P}" x2="${W - 4}" y1="${10 + (1 - f) * (H - 40)}" y2="${10 + (1 - f) * (H - 40)}" class="grid"/><text x="2" y="${14 + (1 - f) * (H - 40)}" class="axis">${Math.round(max * f)}${unit}</text>`).join('')}
+      ${(max <= 1 ? [0, 1] : [0, 0.5, 1]).map(f => `<line x1="${P}" x2="${W - 4}" y1="${10 + (1 - f) * (H - 40)}" y2="${10 + (1 - f) * (H - 40)}" class="grid"/><text x="2" y="${14 + (1 - f) * (H - 40)}" class="axis">${Math.round(max * f)}${unit}</text>`).join('')}
       ${data.map((d, i) => { const x = P + 4 + i * ((W - P - 8) / n); const h = (d.v || 0) / max * (H - 40); return `<rect x="${x}" y="${H - 30 - h}" width="${bw}" height="${h}" rx="3" class="bar"/><text x="${x + bw / 2}" y="${H - 34 - h}" text-anchor="middle" class="axis val">${d.v ?? ''}</text>${n <= 14 || i % Math.ceil(n / 8) === 0 ? `<text x="${x + bw / 2}" y="${H - 14}" text-anchor="middle" class="axis">${d.lbl}</text>` : ''}`; }).join('')}
     </svg>`;
   }

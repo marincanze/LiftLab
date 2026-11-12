@@ -325,13 +325,12 @@ const Anim = (() => {
     const see = (x, y, r) => { x0 = Math.min(x0, x - r); x1 = Math.max(x1, x + r); y0 = Math.min(y0, y - r); };
     fr.forEach(f => f.forEach(sh => { if (sh.k === 'P') sh.v.forEach(q => see(q[0], q[1], sh.w / 2)); else see(sh.v[0], sh.v[1], sh.v[2]); }));
     (def.st || []).forEach(q => { if (q[0] === 'L') { see(q[1], q[2], 3); see(q[3], q[4], 3); } else if (q[0] === 'R') { see(q[1], q[2], 0); see(q[1] + q[3], q[2] + q[4], 0); } else see(q[1], q[2], q[3]); });
-    const FLOOR = 140, LBL = still ? 4 : 15;
+    const FLOOR = 140, LBL = 5;
     let h = Math.max(104, FLOOR - y0 + 8) + LBL, w = Math.max(x1 - x0 + 16, h * 1.45);
     if (w > h * 1.45) h = w / 1.45;
     const cx = (x0 + x1) / 2, vx = r1(cx - w / 2), vy = r1(FLOOR + LBL - h);
-    const phase = still ? '' : ['lift', 'lower'].map((k, n) => `<text class="f-phase f-${k}" x="${r1(cx)}" y="${FLOOR + 11.5}" text-anchor="middle" opacity="${n ? 0 : 1}">${n ? '▼ ' : '▲ '}${(opts.phases || ['', ''])[n]}<animate attributeName="opacity" dur="${DUR}s" repeatCount="indefinite" calcMode="discrete" keyTimes="0;${r3((T_UP + T_HOLD * 0.5) / DUR)}" values="${n ? '0;1' : '1;0'}"/></text>`).join('');
     const body = still ? `<g opacity=".28">${draw(fr[0], false)}</g>${draw(fr[N], false)}` : draw(fr[0], true);
-    return `<svg class="fig" viewBox="${vx} ${vy} ${r1(w)} ${r1(h)}" role="img" aria-label="${opts.label || ''}" data-a="figToggle"><path class="f-floor" d="M${r1(cx - w / 2 + 8)} ${FLOOR}H${r1(cx + w / 2 - 8)}"/>${st}${body}${phase}</svg>`;
+    return `<svg class="fig" viewBox="${vx} ${vy} ${r1(w)} ${r1(h)}" role="img" aria-label="${opts.label || ''}" data-a="figToggle"><path class="f-floor" d="M${r1(cx - w / 2 + 8)} ${FLOOR}H${r1(cx + w / 2 - 8)}"/>${st}${body}</svg>`;
   }
   return { svg, has: ex => !!(MAP[ex.id] || BY_MUSCLE[ex.m]), MAP, A, DUR };
 })();

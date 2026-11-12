@@ -16,6 +16,7 @@
         ${App.menuRow(ICON.user, t('menu.profile'), t('menu.profile.d'), 'profile')}
         ${App.menuRow(ICON.bandage, t('menu.injuries'), t('menu.injuries.d'), 'injuries')}
         ${App.menuRow(ICON.building, t('menu.envs'), t('menu.envs.d'), 'envs')}
+        ${App.menuRow(ICON.book, t('menu.library'), t('menu.library.d'), 'library')}
         ${App.menuRow(ICON.sliders, t('menu.prefs'), t('menu.prefs.d'), 'prefs')}
         ${App.menuRow(ICON.flag, t('menu.training'), t('menu.training.d'), 'trainingPrefs')}
         ${App.menuRow(ICON.globe, t('menu.app'), t('menu.app.d'), 'appSettings')}
@@ -408,9 +409,31 @@
     ${q(t('set.notifPerm'))}<button class="btn secondary" data-a="askNotif">${t('set.notifBtn')}</button>${hint(t('set.notifHint'))}`;
   A.askNotif = () => { if (!('Notification' in window)) { App.notice(t('notice'), t('set.notifNA')); return; } Notification.requestPermission().then(p => { if (p === 'granted') { App.notify(t('set.notifTest')); App.notice(t('notice'), t('set.notifOk')); } else App.notice(t('notice'), t('set.notifDenied')); }); };
 
+  // ---------- Exercise library ----------
+  P.library = () => {
+    const qtxt = (ui.libQ || '').trim().toLowerCase();
+    const grp = ui.libG || 'all';
+    const en = Engine.env(st());
+    const inGroup = new Set(grp === 'all' ? MUSCLES : (MUSCLE_GROUPS.find(g => g[0] === grp) || [0, []])[1]);
+    const list = EXERCISES.filter(e => inGroup.has(e.m) && (!ui.libAvail || Engine.available(e, en)) && (!qtxt || e.n.en.toLowerCase().includes(qtxt) || (e.n.sl || '').toLowerCase().includes(qtxt)))
+      .sort((a, b) => MUSCLES.indexOf(a.m) - MUSCLES.indexOf(b.m) || b.ev - a.ev);
+    let last = null;
+    return `${App.pageHead(t('menu.library'))}
+      <div class="search"><span>${ICON.search}</span><input class="inp" id="libSearch" placeholder="${t('lib.search')}" value="${esc(ui.libQ || '')}" data-in="libQ"></div>
+      <div class="chips sel scroll-x">${[['all']].concat(MUSCLE_GROUPS).map(g => `<button class="chip ${grp === g[0] ? 'on' : ''}" data-a="libGroup" data-g="${g[0]}">${g[0] === 'all' ? t('lib.all') : t('mg.' + g[0])}</button>`).join('')}</div>
+      <button class="toggle-row" data-a="libAvail"><span><b>${t('lib.avail')}</b><small>${esc(en.name)}</small></span><i class="switch ${ui.libAvail ? 'on' : ''}"><i></i></i></button>
+      <p class="muted small">${t('lib.count', { n: list.length })}</p>
+      ${list.map(e => { const head = e.m !== last ? `<h3 class="sec-h">${App.mName(e.m)}</h3>` : ''; last = e.m;
+        return `${head}<button class="lib-row ${Engine.available(e, en) ? '' : 'na'}" data-a="info" data-id="${e.id}"><span class="lib-fig">${Anim.svg(e, { still: true })}</span><span><b>${esc(App.exName(e.id))}</b><small>${'★'.repeat(e.ev)}${'☆'.repeat(5 - e.ev)} · ${t('load.' + e.load)}${Engine.available(e, en) ? '' : ' · ' + t('lib.na')}</small></span>${ICON.right}</button>`; }).join('') || `<p class="muted center">${t('lib.empty')}</p>`}`;
+  };
+  A.libQ = (d, el) => { ui.libQ = el.value; App.keepScroll(App.render); const i = document.getElementById('libSearch'); if (i) { i.focus(); i.setSelectionRange(i.value.length, i.value.length); } };
+  A.libGroup = d => { ui.libG = d.g; App.render(); };
+  A.libAvail = () => { ui.libAvail = !ui.libAvail; App.keepScroll(App.render); };
+
   // ---------- Data ----------
   P.data = () => `${App.pageHead(t('menu.data'))}${hint(t('data.hint'))}
     <h3 class="sec-h">${t('data.backup')}</h3>
+    <p class="muted small">${st().lastBackupAt ? t('data.lastBackup', { d: App.fmtDateLong(st().lastBackupAt) }) : t('data.noBackup')} · <span id="persistState">${t('data.persist.' + (App.persisted == null ? 'unknown' : App.persisted ? 'yes' : 'no'))}</span></p>
     <button class="btn secondary" data-a="export">${t('data.export')}</button>
     <label class="btn secondary file-btn">${t('data.import')}<input type="file" accept="application/json,.json" data-ch="importFile" hidden></label>
     <button class="btn secondary" data-a="copyData">${t('data.copy')}</button>${hint(t('data.copyHint'))}
@@ -418,6 +441,7 @@
     <button class="btn danger" data-a="clearHistory">${t('data.clearHistory')}</button>
     <button class="btn danger" data-a="reset">${t('data.reset')}</button>`;
   A.export = () => {
+    st().lastBackupAt = Date.now(); App.save();
     const blob = new Blob([JSON.stringify(st(), null, 1)], { type: 'application/json' });
     const a = document.createElement('a');
     a.href = URL.createObjectURL(blob);

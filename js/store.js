@@ -34,12 +34,12 @@ const Store = (() => {
   });
 
   const defaults = () => {
-    const gym = makeEnv('Fitnes', 'commercial', 'kg');
+    const gym = makeEnv('Gym', 'commercial', 'kg');
     const now = Date.now();
     return {
       v: 1, createdAt: now,
       settings: {
-        lang: 'sl', theme: 'dark', units: 'kg', lengthUnits: 'cm',
+        lang: 'en', theme: 'dark', units: 'kg', lengthUnits: 'cm',
         name: '', sex: 'm', birthYear: null, bodyweight: 80, height: 178, bodyType: 'average',
         experience: '1-3y', lifter: 'hobbyist', goal: 'blend', e1rm: { squat: null, bench: null, deadlift: null }, wilks: null,
         lastDeloadWeeks: null, firstWeekDeload: false,
@@ -54,7 +54,7 @@ const Store = (() => {
       },
       envs: [gym], favorites: [], disliked: [], customEx: [], swaps: {}, exPrefs: {}, notes: {},
       rotation: 0, todayMin: null, nextAt: null, lastDeloadAt: null, firstDeloadDone: false,
-      history: [], bwLog: [], draft: null, active: null
+      history: [], bwLog: [], measures: [], moved: {}, lastBackupAt: null, draft: null, active: null
     };
   };
 
@@ -66,11 +66,11 @@ const Store = (() => {
     out.settings.prefs = Object.assign(ds.settings.prefs, out.settings.prefs || {});
     out.settings.schedule = Object.assign(ds.settings.schedule, out.settings.schedule || {});
     out.settings.e1rm = Object.assign({ squat: null, bench: null, deadlift: null }, out.settings.e1rm || {});
-    if (!out.envs || !out.envs.length) { const e = makeEnv('Fitnes', 'commercial', out.settings.units); out.envs = [e]; out.settings.envId = e.id; }
+    if (!out.envs || !out.envs.length) { const e = makeEnv('Gym', 'commercial', out.settings.units); out.envs = [e]; out.settings.envId = e.id; }
     out.envs.forEach(e => { e.bars = e.bars || {}; e.bands = e.bands || []; e.kettlebells = e.kettlebells || []; e.machines = e.machines || {}; e.variants = e.variants || {}; e.micro = e.micro || []; e.plates = e.plates || []; e.dumbbells = e.dumbbells || []; });
-    ['favorites', 'disliked', 'customEx', 'history', 'bwLog'].forEach(k => { if (!Array.isArray(out[k])) out[k] = []; });
+    ['favorites', 'disliked', 'customEx', 'history', 'bwLog', 'measures'].forEach(k => { if (!Array.isArray(out[k])) out[k] = []; });
     out.disliked = out.disliked.map(x => (typeof x === 'string' ? { exId: x, envId: null } : x));
-    ['swaps', 'exPrefs', 'notes'].forEach(k => { if (!out[k] || typeof out[k] !== 'object') out[k] = {}; });
+    ['swaps', 'exPrefs', 'notes', 'moved'].forEach(k => { if (!out[k] || typeof out[k] !== 'object') out[k] = {}; });
     if (!out.createdAt) out.createdAt = Date.now();
     if (s && !s.darkDefault && out.settings.theme === 'light') out.settings.theme = 'dark';   // one-time switch to the dark default; the choice in the settings is kept afterwards
     out.darkDefault = true;

@@ -61,7 +61,7 @@
   P.wizard = args => {
     const i = args.step;
     const step = STEPS[i];
-    const pct = completeness();
+    const pct = Math.round((i + 1) / STEPS.length * 100);
     const crumb = `${t('cat.' + step.cat)}${step.sub ? ` / <b>${t('sub.' + step.sub)}</b>` : ''}`;
     return `<div class="wiz">
       <div class="wiz-top">${App.brand()}<span class="muted small">${i + 1}/${STEPS.length}</span></div>
@@ -322,7 +322,6 @@
     return `${q(t('days.cyclic'))}${App.yesNo('settings.schedule.cyclic')}${hint(t('days.cyclicHint'))}
       ${sc.cyclic ? `<div class="grid2"><div>${q(t('days.on'))}${App.seg('settings.schedule.cycleOn', [1, 2, 3, 4, 5].map(v => [v, v]))}</div><div>${q(t('days.off'))}${App.seg('settings.schedule.cycleOff', [1, 2, 3].map(v => [v, v]))}</div></div>`
         : `${q(t('days.perWeek'))}${App.seg('settings.schedule.daysPerWeek', [1, 2, 3, 4, 5, 6, 7].map(d => [d, d]))}
-      ${hint(t('days.recHint', { s: t('rt.' + Engine.recommendedType(S())) }))}
       ${q(t('days.specific'))}${App.yesNo('settings.schedule.specificDays')}
       ${sc.specificDays ? `<div class="daypick">${dn.map((n, i) => `<button class="${(sc.days || []).includes(i) ? 'on' : ''}" data-a="dayToggle" data-i="${i}">${n}</button>`).join('')}</div>` : ''}`}
       ${q(t('days.time'))}${App.seg('settings.schedule.unlimitedTime', [[false, t('days.limited')], [true, t('days.unlimited')]])}

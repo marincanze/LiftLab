@@ -1,7 +1,7 @@
 {
   "name": "LiftLab",
   "short_name": "LiftLab",
-  "description": "Offline trening coach: načrtovanje treningov glede na čas, opremo in napredek.",
+  "description": "Offline training coach: workouts planned around your time, equipment and progress.",
   "start_url": "./",
   "scope": "./",
   "display": "standalone",

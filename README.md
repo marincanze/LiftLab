@@ -8,9 +8,11 @@ Offline trener za trening z utežmi (PWA). Načrtuje treninge glede na tvoj čas
 - **Načrtovanje**: trening se prilagodi času, deload tedni, predlog dneva počitka, superseti in drop seti (samodejno ali ročno), podaljšanje, preskok, ponovna sestava, razvrščanje.
 - **Prikaz izvedbe**: animirana figura za vsako vajo (gib v priporočenem tempu, označena ciljna mišica), deluje brez povezave.
 - **Aktivni trening**: napovedan konec, priprava → ogrevanje → izvedba → vpis seta → počitek, hitri namigi za težo, kalkulator plošč, elastike in vaje s pomočjo, opombe, zgodovina vaje, celozaslonski način, premor, ocena težavnosti, rekordi.
-- **Koledar in statistika**: opravljeni in načrtovani dnevi, ocena uspešnosti, doslednost, rekordi, volumen po mišicah, napredek e1RM, telesna teža, težavnost; obdobja od tedna do celotne zgodovine.
+- **Tedenski načrt in knjižnica vaj**: vsi treningi v tednu z načrtovanimi seti na mišico; pregled vseh vaj z iskanjem in prikazom izvedbe.
+- **Deload po potrebi**: predlog lažjega tedna, ko napredek zastane (ne fiksno po koledarju).
+- **Koledar in statistika**: opravljeni in načrtovani dnevi, ocena uspešnosti, doslednost, rekordi, volumen po mišicah, napredek e1RM, telesna teža in telesne mere, težavnost; prestavljanje posameznega treninga v koledarju; obdobja od tedna do celotne zgodovine.
 - **Obvestila**: sistemsko obvestilo ob izteku časovnika počitka ali ogrevanja (prek service workerja, brez strežnika).
-- **Ostalo**: slovenščina/angleščina, temna (privzeta)/svetla tema, izklop vodičev, kg/lbs (tudi po vajah), lastne vaje, vaje, ki se jim izogibaš, izvoz/uvoz podatkov, vodiči ob prvi uporabi.
+- **Ostalo**: slovenščina/angleščina, temna (privzeta)/svetla tema, izklop vodičev, kg/lbs (tudi po vajah), lastne vaje, vaje, ki se jim izogibaš, izvoz/uvoz podatkov z opomnikom za varnostno kopijo, vodiči ob prvi uporabi.
 
 ## Zagon na računalniku
 ```
