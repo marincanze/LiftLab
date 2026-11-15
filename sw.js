@@ -1,5 +1,5 @@
 /* Offline cache for the whole app (network-first so updates arrive when online, cache otherwise). */
-const CACHE = 'liftlab-v6';
+const CACHE = 'liftlab-v7';
 const ASSETS = ['./', 'index.html', 'manifest.webmanifest', 'css/app.css',
   'js/i18n.js', 'js/data.js', 'js/engine.js', 'js/anim.js', 'js/store.js', 'js/app.js', 'js/profile.js', 'js/settings.js', 'js/session.js', 'js/views.js', 'js/boot.js',
   'icons/icon.svg', 'icons/icon-192.png', 'icons/icon-512.png', 'icons/badge.png'];

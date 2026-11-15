@@ -484,6 +484,7 @@ const Engine = (() => {
     applyDropsets(items, s.prefs.dropsetStrategy || 'never', over);
     fit(items, st, w.id, minutes * 60, used, deload);
     items.forEach(it => finalize(it, st, deload));
+    applyOrder(items, st);
     estimate(items, s);
     return items;
   }
@@ -502,7 +503,8 @@ const Engine = (() => {
     if (!it.variant && vars.length) it.variant = vars[0];
     const b = baseE1(ex, st, it.variant);
     it.calib = b.calib;
-    it.e1 = b.e1;
+    it.e1 = it.e1f = b.e1;
+    it.ord = 0;
     it.weight = startWeight(ex, st, it, b);
     if (it.drops == null) it.drops = 0;
     return it;
@@ -575,11 +577,119 @@ const Engine = (() => {
     if (known.deadlift > 0 && ['hamstrings', 'erectors', 'upperBack', 'lats', 'upperTraps'].includes(ex.m)) return known.deadlift * (ex.r / 1.6);
     return bw * (ex.r || 0.3) * expF * fem;
   }
+  // ----- adaptive strength: learned from the last few sessions and corrected for the exercise order -----
+  /**
+   * Work done for the muscle of item `i` by the other exercises of the session, in "exercises": the same primary
+   * muscle counts 1, a muscle that only assists 0.5, scaled by the number of sets (3 sets = 1).
+   * History items count what was logged before them; plan items count the planned sets of everything listed before
+   * them plus whatever is already logged; the exercise being started (`actualOnly`) counts logged sets only.
+   */
+  function priorLoad(list, i, actualOnly) {
+    const ex = EX[list[i].exId];
+    if (!ex) return 0;
+    let n = 0;
+    list.forEach((x, k) => {
+      const e = EX[x.exId];
+      if (k === i || !e) return;
+      const share = e.m === ex.m ? 1 : (e.sec || []).includes(ex.m) ? 0.5 : 0;
+      if (!share) return;
+      let c;
+      if (Array.isArray(x.sets)) c = k < i ? x.sets.length : 0;
+      else {
+        const logged = (x.logged || []).length;
+        c = actualOnly || k > i ? logged : (x.status === 'done' ? logged : Math.max(x.sets || 0, logged));
+      }
+      if (c > 0) n += share * clamp(c / 3, 0.5, 1.5);
+    });
+    return n;
+  }
+  /** share of strength lost to `n` earlier exercises for the same muscle: 4 % after one, 7 % after two, then 2 % each, 12 % at most */
+  function orderLoss(n) {
+    if (!(n > 0)) return 0;
+    return Math.min(0.12, n <= 1 ? 0.04 * n : n <= 2 ? 0.04 + 0.03 * (n - 1) : 0.07 + 0.02 * (n - 2));
+  }
+  const HIST_W = [0.5, 0.25, 0.15, 0.10];
+  /** the last sessions of an exercise, newest first, each as a "fresh" e1RM (as if it had been the first exercise for its muscle that day) */
+  function sessionsOf(ex, st, variant) {
+    const bw = st.settings.bodyweight;
+    const out = [], easy = [];
+    for (let i = st.history.length - 1; i >= 0 && out.length < HIST_W.length; i--) {
+      const h = st.history[i];
+      const k = h.items.findIndex(x => x.exId === ex.id && x.sets.length && (!variant || !x.variant || x.variant === variant));
+      if (k < 0) continue;
+      const e1 = bestNormE1(ex, h.items[k].sets, bw) / (1 - orderLoss(priorLoad(h.items, k)));
+      if (!(e1 > 0)) continue;
+      (h.deload ? easy : out).push({ date: h.date, e1 });
+    }
+    return out.length ? out : easy.slice(0, HIST_W.length);      // deload sessions only when there is nothing else
+  }
+  let pfMemo = { key: null, by: null };
+  /** proven strength compared with the profile estimate, per muscle, from the latest result of every exercise in the last 20 workouts */
+  function strengthRatios(st) {
+    const s = st.settings, H = st.history;
+    const key = [H.length, H.length ? H[H.length - 1].id : '', s.bodyweight, s.experience, s.sex, JSON.stringify(s.e1rm || {})].join('|');
+    if (pfMemo.key === key) return pfMemo.by;
+    const by = { all: [] };
+    const seen = new Set();
+    for (let i = H.length - 1; i >= 0 && i >= H.length - 20; i--) {
+      H[i].items.forEach((x, k) => {
+        const e = EX[x.exId];
+        if (!e || seen.has(e.id) || !x.sets.length || e.load === 'band') return;
+        seen.add(e.id);
+        const init = initialE1(e, s);
+        const r = init > 0 ? bestNormE1(e, x.sets, s.bodyweight) / (1 - orderLoss(priorLoad(H[i].items, k))) / init : 0;
+        if (!isFinite(r) || r <= 0) return;
+        (by[e.m] = by[e.m] || []).push(r); by.all.push(r);
+      });
+    }
+    pfMemo = { key, by };
+    return by;
+  }
+  const median = a => { const b = a.slice().sort((x, y) => x - y), n = b.length; return n % 2 ? b[(n - 1) / 2] : (b[n / 2 - 1] + b[n / 2]) / 2; };
+  /** first guess for an exercise without history: the profile estimate scaled by how strong the user has proved to be elsewhere */
+  function personalFactor(ex, st) {
+    if (ex.load === 'band') return 1;
+    const by = strengthRatios(st);
+    const own = by[ex.m] || [];
+    const src = own.length ? own : by.all.length >= 2 ? by.all : [];
+    if (!src.length) return 1;
+    const conf = src.length / (src.length + 1) * (own.length ? 1 : 0.6);      // few results, or only other muscles: trust it less
+    return clamp(1 + (median(src) - 1) * conf, 0.5, 2);
+  }
+  /**
+   * Fresh strength for an exercise: the last four sessions weighted 50 / 25 / 15 / 10 % (fewer sessions share the
+   * weights between them), minus 1 % per week once the exercise has not been trained for four weeks (10 % at most).
+   * Without history: the profile estimate times the personal factor, flagged as calibration.
+   */
   function baseE1(ex, st, variant) {
     const s = st.settings;
-    const lp = lastPerf(ex.id, st.history, variant);
-    if (lp) return { e1: bestNormE1(ex, lp.sets, s.bodyweight), calib: false };
-    return { e1: initialE1(ex, s) * 0.92, calib: true };
+    const ss = sessionsOf(ex, st, variant);
+    if (!ss.length) return { e1: initialE1(ex, s) * 0.92 * personalFactor(ex, st), calib: true, n: 0 };
+    let sw = 0, se = 0;
+    ss.forEach((x, i) => { sw += HIST_W[i]; se += HIST_W[i] * x.e1; });
+    const idle = (Date.now() - ss[0].date) / (7 * DAY);
+    return { e1: se / sw * (1 - Math.min(0.10, Math.max(0, idle - 4) * 0.01)), calib: false, n: ss.length };
+  }
+  /**
+   * Exercise order: an exercise that comes after other work for the same muscle starts weaker. Sets `it.ord` (share
+   * lost), lowers `it.e1` from the fresh value `it.e1f` and re-picks the starting weight whenever the order changes.
+   * Exercises with logged sets are left alone: from then on the sets of the day drive the prediction.
+   */
+  function applyOrder(items, st) {
+    items.forEach((it, i) => {
+      const ex = EX[it.exId];
+      if (!ex || (it.logged && it.logged.length) || it.status === 'done') return;
+      if (it.e1f == null) it.e1f = it.e1;
+      if (!(it.e1f > 0)) return;
+      const loss = Math.round(orderLoss(priorLoad(items, i, it.status === 'active')) * 1000) / 1000;
+      if (it.ord === loss) return;
+      const untouched = it.ord == null && loss === 0;
+      it.ord = loss;
+      if (untouched) return;
+      it.e1 = it.e1f * (1 - loss);
+      it.weight = bestWeight(it.e1, it, ex, st, rirTarget(it, 0));
+      if (it.warmups) it.warmups = warmupSets(ex, it.weight, it.wu, st);
+    });
   }
 
   // ================= ACHIEVABLE WEIGHTS =================
@@ -810,7 +920,7 @@ const Engine = (() => {
     dayStart, weekday, isTrainingDay, nextWorkoutAt, budgetFor, consecutiveTrained, restRecommended, deloadState, recovery,
     env, available, injury, disliked, score, ranked, candidates, restFor, minRest, rirFor, repRangeFor, setDur, transition, warmupCount, estimate, baseSets,
     buildPlan, finalize, exPref, setExPref, variantsFor, primaryEquip, equipOptions, machineCfg, barWeightFor,
-    load, e1rm, loadFor, repsAt, lastPerf, bestNormE1, baseE1, initialE1, clearCache, achievable, roundW, stepW, plateBreakdown,
+    load, e1rm, loadFor, repsAt, lastPerf, bestNormE1, baseE1, initialE1, applyOrder, orderLoss, priorLoad, personalFactor, sessionsOf, clearCache, achievable, roundW, stepW, plateBreakdown,
     rirTarget, midReps, bestWeight, liveE1, predict, suggestion, dropWeights, warmupSets, kcal, recordCheck, performanceScore
   };
 })();

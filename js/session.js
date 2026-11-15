@@ -11,6 +11,9 @@
   const E = Engine;
   const chip = App.chip;
 
+  /** after any change to the exercise list: order fatigue (prediction and starting weight), then the time estimate */
+  const recalc = list => { E.applyOrder(list, st()); return E.estimate(list, S()); };
+
   App.registerCustom = () => { (st().customEx || []).forEach(e => { if (!EX[e.id]) { EXERCISES.push(e); EX[e.id] = e; } }); };
 
   // ================= DRAFT =================
@@ -20,7 +23,7 @@
   const ssRow = on => `<button class="toggle-row" data-a="ssToday"><span><b>${t('ss.today')}</b><small>${t('ss.today.d')}</small></span><i class="switch ${on ? 'on' : ''}"><i></i></i></button>`;
   function draftSig(w, minutes, deload) {
     const s = S();
-    return JSON.stringify([w.id, w.muscles, minutes, deload, s.envId, s.experience, s.units, s.prio, s.prefs.restMode, s.prefs.supersetStrategy, !!s.prefs.supersetIsoOnly, ssOff(), s.prefs.dropsetStrategy, s.warmups, s.rirTraining, s.mode,
+    return JSON.stringify(['m2', w.id, w.muscles, minutes, deload, s.envId, s.experience, s.units, s.prio, s.prefs.restMode, s.prefs.supersetStrategy, !!s.prefs.supersetIsoOnly, ssOff(), s.prefs.dropsetStrategy, s.warmups, s.rirTraining, s.mode,
       s.consistency, s.repRanges, s.goal, Math.round(E.daysPerWeek(st()) * 10), s.bodyweight, s.sex, s.injuries, s.profile, st().history.length, st().disliked, st().customEx.length, E.env(st()).rev]);
   }
   function getDraft(force) {
@@ -61,11 +64,12 @@
   /** what was done the last time this exercise was trained — the number to beat */
   function lastLine(ex, it) {
     const lp = E.lastPerf(ex.id, st().history, it && it.variant);
-    if (!lp) return `<p class="lastp none">${ICON.clock}<span>${t('last.none')}</span></p>`;
+    const ord = it && it.ord > 0 && !(it.logged && it.logged.length) ? `<p class="lastp none">${ICON.layers}<span>${t('last.order', { p: App.fmtNum(Math.round(it.ord * 1000) / 10) })}</span></p>` : '';
+    if (!lp) return `<p class="lastp none">${ICON.clock}<span>${t('last.none')}</span></p>${ord}`;
     const same = lp.sets.every(x => Math.abs(x.w - lp.sets[0].w) < 1e-6);
     const reps = x => (x.repsR != null ? x.repsL + '/' + x.repsR : x.reps);
     const txt = same ? `${ex.load === 'bw' && lp.sets[0].w <= 0 && !ex.assist ? '' : App.fmtW(lp.sets[0].w, ex) + ' × '}${lp.sets.map(reps).join(', ')}` : lp.sets.map(x => `${App.fmtW(x.w, ex)} × ${reps(x)}`).join(' · ');
-    return `<p class="lastp">${ICON.clock}<span><b>${t('last.time')}</b> ${txt} <small class="muted">· ${App.fmtDate(lp.date)}</small></span></p>`;
+    return `<p class="lastp">${ICON.clock}<span><b>${t('last.time')}</b> ${txt} <small class="muted">· ${App.fmtDate(lp.date)}</small></span></p>${ord}`;
   }
   function videoArea(i, ex, canSwap) {
     const note = noteFor(ex.id);
@@ -100,7 +104,7 @@
       const off = new Set(a.items.filter(x => x.ss && x.status !== 'done').map(x => x.ss));     // supersets that still have work left
       a.items.forEach(it => { if (off.has(it.ss)) { it.ssWas = it.ss; delete it.ss; } });
     } else a.items.forEach(it => { if (it.ssWas) { it.ss = it.ssWas; delete it.ssWas; } });
-    E.estimate(a.items, S()); App.save(); App.keepScroll(App.render);
+    recalc(a.items); App.save(); App.keepScroll(App.render);
   };
   A.toggleVideo = () => { S().prefs.hideVideos = !S().prefs.hideVideos; App.save(); App.keepScroll(App.render); };
   A.expand = d => { const i = +d.i; ui.expanded = ui.expanded === i ? -1 : i; App.keepScroll(App.render); };
@@ -379,7 +383,7 @@
     plan.filter(x => !have.has(x.exId)).slice(0, 2).forEach(it => { a.items.push(toActiveItem(it, warmSet(a.items.length), a.items.length)); added++; });
     if (!added) { const m = w.muscles[Math.floor(Math.random() * w.muscles.length)]; const c = E.candidates(m, st()).filter(e => !have.has(e.id))[0]; if (c) { const it = E.finalize({ exId: c.id, m, key: null, imp: 2, extra: true, sets: 2, rest: E.restFor(c, S()) }, st()); a.items.push(toActiveItem(it, warmSet(a.items.length), a.items.length)); } }
     if (a.cur < 0) { const n = a.items.findIndex(x => x.status === 'pending'); if (n >= 0) setCurrent(n); }
-    E.estimate(a.items, S()); App.save(); App.render();
+    recalc(a.items); App.save(); App.render();
   };
   A.skipSession = async () => {
     if (!(await App.confirmDlg(t('w.skip'), t('w.skipQ'), t('w.skip'), 'warn'))) return;
@@ -403,7 +407,7 @@
     if (a && (list[i].status !== 'pending' || list[j].status !== 'pending')) return;
     [list[i], list[j]] = [list[j], list[i]];
     if (a) { if (a.cur === i) a.cur = j; else if (a.cur === j) a.cur = i; }
-    E.estimate(list, S()); App.save();
+    recalc(list); App.save();
   }
 
   // ----- exercise context menu -----
@@ -447,9 +451,9 @@
     const alt = E.candidates(it.m, st()).filter(e => !listRef().some(x => x.exId === e.id))[0];
     if (alt && !(st().active && it.logged && it.logged.length)) { it.exId = alt.id; it.variant = null; E.finalize(it, st()); if (st().active) Object.assign(it, toActiveItem(it, warmSet(+d.i), +d.i), { status: it.status, phase: it.status === 'active' ? 'prepare' : it.phase }); App.notice(t('notice'), t('dis.replaced', { n: esc(App.exName(alt.id)) })); }
     else App.notice(t('notice'), t('dis.noAlt'));
-    E.estimate(listRef(), S()); App.save(); App.render();
+    recalc(listRef()); App.save(); App.render();
   };
-  A.setsStep = d => { const list = listRef(); const it = list[+d.i]; it.sets = Math.max(Math.max(1, it.logged ? it.logged.length : 1), Math.min(8, it.sets + (+d.d))); E.estimate(list, S()); App.save(); App.refreshSheet(); App.keepScroll(App.render); };
+  A.setsStep = d => { const list = listRef(); const it = list[+d.i]; it.sets = Math.max(Math.max(1, it.logged ? it.logged.length : 1), Math.min(8, it.sets + (+d.d))); recalc(list); App.save(); App.refreshSheet(); App.keepScroll(App.render); };
   A.removeEx = d => {
     const list = listRef(); const i = +d.i; const a = st().active;
     if (a && list[i].logged.length) { App.closeSheet(); return; }
@@ -457,7 +461,7 @@
     list.splice(i, 1);
     if (ss) list.forEach(x => { if (x.ss === ss) delete x.ss; });
     if (a) { if (a.cur === i) { a.cur = -1; const n = list.findIndex(x => x.status === 'pending'); if (n >= 0) setCurrent(n); } else if (a.cur > i) a.cur--; }
-    E.estimate(list, S()); App.save(); App.closeSheet(); App.render();
+    recalc(list); App.save(); App.closeSheet(); App.render();
   };
   A.exNote = d => {
     const envId = E.env(st()).id;
@@ -483,11 +487,11 @@
     const [lo, hi] = i < j ? [i, j] : [j, i];
     if (!(st().active && (list[lo].status !== 'pending' || list[hi].status !== 'pending'))) { const [m] = list.splice(hi, 1); list.splice(lo + 1, 0, m); }
     if (st().active) { const a = st().active; a.cur = a.items.findIndex(x => x.status === 'active'); }
-    E.estimate(list, S()); App.save(); App.closeSheet(); App.render();
+    recalc(list); App.save(); App.closeSheet(); App.render();
   };
-  A.removeSS = d => { const list = listRef(); const ss = list[+d.i].ss; list.forEach(x => { if (x.ss === ss) delete x.ss; }); E.estimate(list, S()); App.save(); App.closeSheet(); App.render(); };
-  A.addDrops = d => { const list = listRef(); list[+d.i].drops = 2; E.estimate(list, S()); App.save(); App.closeSheet(); App.render(); };
-  A.removeDrops = d => { const list = listRef(); list[+d.i].drops = 0; E.estimate(list, S()); App.save(); App.closeSheet(); App.render(); };
+  A.removeSS = d => { const list = listRef(); const ss = list[+d.i].ss; list.forEach(x => { if (x.ss === ss) delete x.ss; }); recalc(list); App.save(); App.closeSheet(); App.render(); };
+  A.addDrops = d => { const list = listRef(); list[+d.i].drops = 2; recalc(list); App.save(); App.closeSheet(); App.render(); };
+  A.removeDrops = d => { const list = listRef(); list[+d.i].drops = 0; recalc(list); App.save(); App.closeSheet(); App.render(); };
   A.addDropsNow = d => { const a = st().active; const it = a.items[+d.i]; it.drops = 2; setCurrent(+d.i); it.phase = 'drops'; ui.drops = { i: +d.i, list: E.dropWeights(it, EX[it.exId], st(), 2).map(w => ({ w, reps: 0 })) }; App.save(); App.render(); };
   A.changeEquip = d => {
     const it = listRef()[+d.i]; const ex = EX[it.exId];
@@ -510,7 +514,7 @@
   function refreshWeight(it) {
     const ex = EX[it.exId];
     if (it.logged && it.logged.length) { it.weight = E.roundW(it.weight, ex, st(), 'nearest'); return; }
-    const b = E.baseE1(ex, st(), it.variant); it.e1 = b.e1; it.calib = b.calib; it.weight = E.bestWeight(b.e1, it, ex, st(), E.rirTarget(it, 0));
+    const b = E.baseE1(ex, st(), it.variant); it.e1f = b.e1; it.e1 = b.e1 * (1 - (it.ord || 0)); it.calib = b.calib; it.weight = E.bestWeight(it.e1, it, ex, st(), E.rirTarget(it, 0));
     if (it.warmups) it.warmups = E.warmupSets(ex, it.weight, it.wu, st());
   }
 
@@ -540,7 +544,7 @@
       const ex = EX[id];
       const it = E.finalize({ exId: id, m: ex.m, key: null, imp: 2, extra: false, sets: E.baseSets(S(), ex.m, false), rest: E.restFor(ex, S()) }, st());
       if (st().active) { const a = st().active; list.push(toActiveItem(it, warmSet(list.length), list.length)); if (a.cur < 0) setCurrent(list.length - 1); } else list.push(it);
-      E.estimate(list, S()); App.save(); App.closeSheet(); App.render();
+      recalc(list); App.save(); App.closeSheet(); App.render();
     } });
   };
   A.swap = d => { ui.sw = { i: +d.i, q: '' }; App.openSheet(swapSheet); };
@@ -564,7 +568,7 @@
     if (it.key) st().swaps[it.key] = d.id;
     it.exId = d.id; it.variant = null; E.finalize(it, st());
     if (st().active) { const n = toActiveItem(it, warmSet(i), i); Object.assign(it, n, { status: it.status, phase: it.status === 'active' ? 'prepare' : it.phase }); }
-    E.estimate(list, S()); App.save(); App.closeSheet(); App.render();
+    recalc(list); App.save(); App.closeSheet(); App.render();
   };
   A.pickVariant = d => {
     const it = listRef()[+d.i]; const vars = E.variantsFor(EX[it.exId], st());
@@ -603,7 +607,7 @@
     const wu = E.warmupCount(ex, warm, s, idx);
     warm.add(ex.m); (ex.sec || []).forEach(m => warm.add(m));
     const b = E.baseE1(ex, st(), it.variant);
-    return Object.assign({}, it, { wu, e1: b.e1, calib: b.calib, warmups: E.warmupSets(ex, it.weight, wu, st()), logged: [], status: 'pending', phase: 'prepare' });
+    return Object.assign({}, it, { wu, e1f: b.e1, e1: b.e1 * (1 - (it.ord || 0)), calib: b.calib, warmups: E.warmupSets(ex, it.weight, wu, st()), logged: [], status: 'pending', phase: 'prepare' });
   }
   function setCurrent(i) {
     const a = st().active;
@@ -613,6 +617,7 @@
     it.status = 'active'; a.cur = i; a.phaseStart = Date.now(); a.restEnd = null; a.warmEnd = null; a.beeped = true;
     it.phase = it.logged.length ? 'rest' : 'prepare';
     if (it.phase === 'rest') a.restEnd = Date.now();
+    E.applyOrder(a.items, st());      // what has really been done for this muscle so far decides the prediction and the weight
     ui.log = null;
   }
   A.startSession = async () => {
