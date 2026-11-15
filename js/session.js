@@ -21,7 +21,7 @@
   function draftSig(w, minutes, deload) {
     const s = S();
     return JSON.stringify([w.id, w.muscles, minutes, deload, s.envId, s.experience, s.units, s.prio, s.prefs.restMode, s.prefs.supersetStrategy, !!s.prefs.supersetIsoOnly, ssOff(), s.prefs.dropsetStrategy, s.warmups, s.rirTraining, s.mode,
-      s.consistency, s.repRanges, s.goal, s.bodyweight, s.sex, s.injuries, s.profile, st().history.length, st().disliked, st().customEx.length, E.env(st()).rev]);
+      s.consistency, s.repRanges, s.goal, Math.round(E.daysPerWeek(st()) * 10), s.bodyweight, s.sex, s.injuries, s.profile, st().history.length, st().disliked, st().customEx.length, E.env(st()).rev]);
   }
   function getDraft(force) {
     const w = E.currentWorkout(st());
@@ -356,10 +356,10 @@
   A.nextNow = () => { st().nextAt = Date.now() - 1000; App.save(); App.closeSheet(); App.render(); };
   A.pickWorkout = () => {
     const r = E.routine(st());
-    App.openSheet(() => `<h2>${t('w.pickDay')}</h2><div class="list">${r.map((w, i) => `<button class="list-row ${i === st().rotation % r.length ? 'on' : ''}" data-a="setNext" data-i="${i}"><span><b>${esc(App.workoutName(w))}</b><small>${w.muscles.map(App.mName).join(', ')}</small></span><i class="rdot"></i></button>`).join('')}</div>
+    App.openSheet(() => `<h2>${t('w.pickDay')}</h2><div class="list">${r.map((w, i) => `<button class="list-row ${i === E.rotOf(st()) % r.length ? 'on' : ''}" data-a="setNext" data-i="${i}"><span><b>${esc(App.workoutName(w))}</b><small>${w.muscles.map(App.mName).join(', ')}</small></span><i class="rdot"></i></button>`).join('')}</div>
       <button class="btn secondary" data-a="wizStep" data-step="${App.stepIdx('routine')}">${t('w.editRoutine')}</button>`);
   };
-  A.setNext = d => { st().rotation = +d.i; st().draft = null; App.save(); App.closeSheet(); App.render(); };
+  A.setNext = d => { E.setRot(st(), +d.i); st().draft = null; App.save(); App.closeSheet(); App.render(); };
   A.pickEnv = () => App.openSheet(() => `<h2>${t('w.env')}</h2><p class="muted small-p">${t('w.envHint')}</p><div class="list">${st().envs.map(e => `<button class="list-row ${S().envId === e.id ? 'on' : ''}" data-a="setEnv" data-id="${e.id}"><span><b>${esc(e.name)}</b><small>${t('env.pieces', { n: e.equip.length })}</small></span><i class="rdot"></i></button>`).join('')}</div>
       <button class="btn secondary" data-a="manageEnvs">${t('env.manage')}</button>`);
   A.manageEnvs = () => { App.closeSheet(); App.go('envs'); };
@@ -383,7 +383,7 @@
   };
   A.skipSession = async () => {
     if (!(await App.confirmDlg(t('w.skip'), t('w.skipQ'), t('w.skip'), 'warn'))) return;
-    st().rotation++; st().draft = null; st().todayMin = null; st().nextAt = null; st().ssOffAt = null;
+    E.setRot(st(), E.rotOf(st()) + 1); st().draft = null; st().todayMin = null; st().nextAt = null; st().ssOffAt = null;
     st().skipped = st().skipped || []; st().skipped.push(Date.now());
     App.save(); App.render();
   };
@@ -774,13 +774,13 @@
     st().history.push({ id: a.id, date: a.start, end, wid: a.wid, wname: a.wname, envId: a.envId, envName: a.envName, budgetMin: a.budgetMin, items, prs, difficulty, deload: a.deload, paused: a.pausedTotal || 0 });
     if (a.deload && !st().firstDeloadDone) { st().firstDeloadDone = true; st().lastDeloadAt = a.start; }
     const r = E.routine(st()); const idx = r.findIndex(w => w.id === a.wid);
-    st().rotation = idx >= 0 ? idx + 1 : st().rotation + 1;
+    E.setRot(st(), idx >= 0 ? idx + 1 : E.rotOf(st()) + 1);          // still inside the workout's own week here
     st().active = null; st().draft = null; st().todayMin = null; st().nextAt = null; st().ssOffAt = null; ui.log = null; ui.focus = false;
     App.save(); App.releaseWakeLock();
     ui.pages = []; ui.tab = 'home'; App.render();
     if (prs.length && s.prefs.prNotifications) { App.alertUser(t('pr.title'), 'pr'); await App.dialog({ title: t('pr.title'), cls: 'pr-dlg', body: `<p>${t('pr.text')}</p><ul class="notes">${prs.map(p => `<li><b>${esc(App.exName(p.exId))}</b> — ${t('pr.' + p.type)}</li>`).join('')}</ul>`, buttons: [{ label: t('gotIt'), v: 'ok', cls: 'primary' }] }); }
     await App.dialog({ title: t('sum.title'), body: `<div class="grid3 sum"><div><label>${t('sum.time')}</label><div class="big">${min}<small>min</small></div></div><div><label>${t('st.sets')}</label><div class="big">${nSets}</div></div><div><label>${t('sum.kcal')}</label><div class="big">${E.kcal(min, s.bodyweight)}</div></div></div>
-        <p>${t('sum.noPr')}</p><p class="hint">${t('sum.next', { d: esc(App.workoutName(r[st().rotation % r.length])) })}</p>`, buttons: [{ label: t('close'), v: 'ok', cls: 'primary' }] });
+        <p>${t('sum.noPr')}</p><p class="hint">${t('sum.next', { d: esc(App.workoutName(E.currentWorkout(st()) || r[0])) })}</p>`, buttons: [{ label: t('close'), v: 'ok', cls: 'primary' }] });
     const inj = await App.dialog({ title: t('inj.wasT'), body: `<p>${t('inj.was')}</p>`, buttons: [{ label: t('no'), v: 'no', cls: 'primary' }, { label: t('inj.update'), v: 'yes' }] });
     if (inj === 'yes') App.go('injuries');
   }

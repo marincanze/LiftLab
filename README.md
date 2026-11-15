@@ -9,6 +9,7 @@ Offline trener za trening z utežmi (PWA). Načrtuje treninge glede na tvoj čas
 - **Prikaz izvedbe**: animirana figura za vsako vajo (gib v priporočenem tempu, označena ciljna mišica), deluje brez povezave.
 - **Aktivni trening**: napovedan konec, priprava → ogrevanje → izvedba → vpis seta → počitek, hitri namigi za težo, kalkulator plošč, elastike in vaje s pomočjo, opombe, zgodovina vaje, celozaslonski način, premor, ocena težavnosti, rekordi.
 - **Tedenski načrt in knjižnica vaj**: vsi treningi v tednu z načrtovanimi seti na mišico; pregled vseh vaj z iskanjem in prikazom izvedbe.
+- **Enkratne spremembe tedna**: drugi dnevi treninga in drug split samo za izbrani teden, nato se redni program vrne sam.
 - **Deload po potrebi**: predlog lažjega tedna, ko napredek zastane (ne fiksno po koledarju).
 - **Koledar in statistika**: opravljeni in načrtovani dnevi, ocena uspešnosti, doslednost, rekordi, volumen po mišicah, napredek e1RM, telesna teža in telesne mere, težavnost; prestavljanje posameznega treninga v koledarju; obdobja od tedna do celotne zgodovine.
 - **Obvestila**: sistemsko obvestilo ob izteku časovnika počitka ali ogrevanja (prek service workerja, brez strežnika).

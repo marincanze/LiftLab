@@ -54,7 +54,7 @@ const Store = (() => {
       },
       envs: [gym], favorites: [], disliked: [], customEx: [], swaps: {}, exPrefs: {}, notes: {},
       rotation: 0, todayMin: null, nextAt: null, lastDeloadAt: null, firstDeloadDone: false,
-      history: [], bwLog: [], measures: [], moved: {}, lastBackupAt: null, draft: null, active: null
+      history: [], bwLog: [], measures: [], moved: {}, weeks: {}, lastBackupAt: null, draft: null, active: null
     };
   };
 
@@ -70,7 +70,7 @@ const Store = (() => {
     out.envs.forEach(e => { e.bars = e.bars || {}; e.bands = e.bands || []; e.kettlebells = e.kettlebells || []; e.machines = e.machines || {}; e.variants = e.variants || {}; e.micro = e.micro || []; e.plates = e.plates || []; e.dumbbells = e.dumbbells || []; });
     ['favorites', 'disliked', 'customEx', 'history', 'bwLog', 'measures'].forEach(k => { if (!Array.isArray(out[k])) out[k] = []; });
     out.disliked = out.disliked.map(x => (typeof x === 'string' ? { exId: x, envId: null } : x));
-    ['swaps', 'exPrefs', 'notes', 'moved'].forEach(k => { if (!out[k] || typeof out[k] !== 'object') out[k] = {}; });
+    ['swaps', 'exPrefs', 'notes', 'moved', 'weeks'].forEach(k => { if (!out[k] || typeof out[k] !== 'object') out[k] = {}; });
     if (!out.createdAt) out.createdAt = Date.now();
     if (s && !s.darkDefault && out.settings.theme === 'light') out.settings.theme = 'dark';   // one-time switch to the dark default; the choice in the settings is kept afterwards
     out.darkDefault = true;

@@ -11,8 +11,8 @@ const Engine = (() => {
   const uid = () => Math.random().toString(36).slice(2, 9);
 
   // ================= ROUTINE =================
-  function recommendedType(s) {
-    const d = s.schedule.daysPerWeek;
+  function recommendedType(s, days) {
+    const d = days != null ? days : s.schedule.daysPerWeek;
     if ((s.prio || []).length) return 'fullbody';
     if (d <= 3) return 'fullbody';
     if (d === 4) return 'upperlower';
@@ -29,11 +29,16 @@ const Engine = (() => {
   }
   function routine(st) {
     const s = st.settings;
+    const ov = activeOverride(st);
+    if (ov && ov.routineType) return templateWorkouts(ov.routineType, s);      // split changed for this one week
     if (s.routineType === 'custom') return s.workouts.filter(w => w.muscles.length);
     const type = s.routineType === 'recommended' ? recommendedType(s) : s.routineType;
     return templateWorkouts(type, s);
   }
-  const currentWorkout = st => { const r = routine(st); return r.length ? r[st.rotation % r.length] : null; };
+  /** position in the rotation; a week with its own split counts separately, so the regular rotation resumes where it stopped */
+  const rotOf = st => { const ov = activeOverride(st); return ov && ov.routineType ? (ov.rot || 0) : st.rotation; };
+  function setRot(st, v) { const ov = activeOverride(st); if (ov && ov.routineType) ov.rot = v; else st.rotation = v; }
+  const currentWorkout = st => { const r = routine(st); return r.length ? r[rotOf(st) % r.length] : null; };
   function unusedMuscles(st) {
     const s = st.settings;
     const used = new Set(routine(st).flatMap(w => w.muscles));
@@ -42,6 +47,8 @@ const Engine = (() => {
   }
   /** planned training days per week */
   function daysPerWeek(st) {
+    const ov = activeOverride(st);
+    if (ov && ov.days) return Math.max(1, ov.days.length);
     const sc = st.settings.schedule;
     const on = sc.cycleOn || 1;
     return sc.cyclic ? 7 * on / (on + (sc.cycleOff || 0)) : (sc.specificDays && sc.days && sc.days.length ? sc.days.length : (sc.daysPerWeek || 4));
@@ -78,7 +85,24 @@ const Engine = (() => {
     for (const k in mv) if (mv[k] === d0) return true;
     return basePlanned(st, d0);
   }
+  // ----- one-off week changes: st.weeks = { [Monday 00:00]: { days: [0..6], routineType: 'ppl' | null, rot } } -----
+  const weekStart = ts => addDays(ts, -weekday(ts));
+  const weekOverride = (st, ts) => (st.weeks && st.weeks[weekStart(ts)]) || null;
+  let ovMemo = { key: null, wk: null };
+  /** the change that applies to the week of the running workout, or of the next planned one */
+  function activeOverride(st) {
+    if (!st.weeks || !Object.keys(st.weeks).length) return null;
+    const now = Date.now();
+    const key = [st.history.length, st.nextAt, st.active ? st.active.start : 0, Math.floor(now / 60000), JSON.stringify(st.weeks), JSON.stringify(st.moved || {}), JSON.stringify(st.settings.schedule)].join('|');
+    if (ovMemo.key !== key) ovMemo = { key, wk: weekStart(st.active ? st.active.start : Math.max(now, nextWorkoutAt(st, now))) };
+    return st.weeks[ovMemo.wk] || null;
+  }
   function basePlanned(st, d0) {
+    const ov = weekOverride(st, d0);
+    return ov && ov.days ? ov.days.includes(weekday(d0)) : regularPlanned(st, d0);
+  }
+  /** planned by the regular schedule, ignoring one-off week changes */
+  function regularPlanned(st, d0) {
     const sc = st.settings.schedule;
     if (sc.cyclic) {
       const start = dayStart(sc.startDate || st.createdAt || Date.now());
@@ -124,7 +148,8 @@ const Engine = (() => {
   function restRecommended(st, now) {
     const sc = st.settings.schedule;
     const n = consecutiveTrained(st, now);
-    const maxRun = sc.cyclic ? (sc.cycleOn || 1) : Math.min(6, Math.max(2, sc.daysPerWeek + 1));
+    const ov = weekOverride(st, now);
+    const maxRun = ov && ov.days ? Math.min(6, Math.max(2, ov.days.length + 1)) : sc.cyclic ? (sc.cycleOn || 1) : Math.min(6, Math.max(2, sc.daysPerWeek + 1));
     return n >= maxRun && n > 0;
   }
 
@@ -781,7 +806,7 @@ const Engine = (() => {
   }
 
   return {
-    LB, FATIGUE, DAY, addDays, uid, clamp, level, recommendedType, templateWorkouts, routine, currentWorkout, unusedMuscles, routineValid, weeklyFreq, daysPerWeek, basePlanned, fatigueSignal,
+    LB, FATIGUE, DAY, addDays, uid, clamp, level, recommendedType, templateWorkouts, routine, currentWorkout, unusedMuscles, routineValid, weeklyFreq, daysPerWeek, basePlanned, regularPlanned, weekStart, weekOverride, activeOverride, rotOf, setRot, fatigueSignal,
     dayStart, weekday, isTrainingDay, nextWorkoutAt, budgetFor, consecutiveTrained, restRecommended, deloadState, recovery,
     env, available, injury, disliked, score, ranked, candidates, restFor, minRest, rirFor, repRangeFor, setDur, transition, warmupCount, estimate, baseSets,
     buildPlan, finalize, exPref, setExPref, variantsFor, primaryEquip, equipOptions, machineCfg, barWeightFor,

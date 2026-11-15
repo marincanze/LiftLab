@@ -92,7 +92,7 @@
     let total = 0;
     const cards = [];
     for (let k = 0; k < n && r.length; k++) {
-      const w = r[(st().rotation + k) % r.length];
+      const w = r[(E.rotOf(st()) + k) % r.length];
       const items = E.buildPlan(st(), w, minutes, { deload: dl.deloading });
       const min = Math.round(E.estimate(items, s) / 60);
       items.forEach(it => { const ex = EX[it.exId]; vol[ex.m] += it.sets; total += it.sets; (ex.sec || []).forEach(m => { if (vol[m] != null) vol[m] += it.sets * 0.5; }); });
@@ -104,6 +104,7 @@
     return `${App.pageHead(t('wk.title'))}
       <p class="muted">${t('wk.intro', { n, t: minutes })}</p>
       ${deloadCard(dl)}
+      ${wkCard()}
       ${cards.join('') || `<p class="muted">${t('w.noRoutine')}</p>`}
       <div class="card"><h3 class="card-title">${t('wk.volume')}</h3><p class="hint">${t('wk.volumeText', { n: total })}</p>${volumeBars(vol, trained)}
         ${low.length ? `<p class="warn-txt">${ICON.warn}<span>${t('wk.low')} ${low.map(App.mName).join(', ')}. ${t('wk.lowTip')}</span></p>` : ''}</div>
@@ -172,8 +173,62 @@
       <h3 class="sec-h">${App.fmtDateLong(sel)}</h3>
       ${selHs.length ? selHs.map(h => histCard(h)).join('') : `<div class="card"><p class="muted">${sel >= todayK ? (E.isTrainingDay(st(), sel) ? t(movedIn(sel) ? 'cal.movedHere' : 'cal.scheduled', { d: movedIn(sel) ? App.fmtDate(+movedIn(sel)) : '' }) : (st().moved || {})[sel] ? t('cal.movedAway', { d: App.fmtDate(st().moved[sel]) }) : t('cal.notScheduled')) : t('cal.noEntries')}</p>
         ${sel >= todayK && E.isTrainingDay(st(), sel) ? `<div class="btn-row"><button class="btn secondary" data-a="calMoveOpen">${t('cal.move')}</button>${movedIn(sel) ? `<button class="btn secondary" data-a="calMoveUndo" data-k="${movedIn(sel)}">${t('cal.moveBack')}</button>` : `<button class="btn ghost" data-a="wizStep" data-step="${App.stepIdx('days')}">${t('cal.editSchedule')}</button>`}</div>` : ''}
-        ${sel >= todayK && (st().moved || {})[sel] ? `<button class="btn secondary" data-a="calMoveUndo" data-k="${sel}">${t('cal.moveBack')}</button>` : ''}</div>`}`;
+        ${sel >= todayK && (st().moved || {})[sel] ? `<button class="btn secondary" data-a="calMoveUndo" data-k="${sel}">${t('cal.moveBack')}</button>` : ''}</div>`}
+      ${E.weekStart(sel) >= E.weekStart(todayK) ? `${(st().weeks || {})[E.weekStart(sel)] ? `<p class="hint">${ICON.edit}<span><b>${t('wkx.adjusted')}</b> ${wkSummary(st().weeks[E.weekStart(sel)])}</span></p>` : ''}
+        <button class="btn secondary" data-a="wkAdjust" data-wk="${E.weekStart(sel)}">${t('wkx.adjust')}</button>` : ''}`;
   };
+
+  // ---------- ONE-OFF WEEK CHANGES (days and split for a single week, then back to the regular program) ----------
+  const WK_TYPES = ['upperlower', 'fullbody', 'ppl', 'ulppl', 'fullpushpull', 'bodypart'];
+  const wkRange = wk => `${App.fmtDate(wk)} – ${App.fmtDate(E.addDays(wk, 6))}`;
+  const regularDays = wk => [0, 1, 2, 3, 4, 5, 6].filter(i => E.regularPlanned(st(), E.addDays(wk, i)));
+  const wkSummary = ov => `${(ov.days || []).map(i => t('wd.' + i)).join(', ')}${ov.routineType ? ' · ' + t('rt.' + ov.routineType) : ''}`;
+  function wkCard() {
+    const cur = E.weekStart(Date.now());
+    const list = [cur, E.addDays(cur, 7)].concat(Object.keys(st().weeks || {}).map(Number).filter(k => k > E.addDays(cur, 7)).sort((a, b) => a - b));
+    return `<div class="card"><h3 class="card-title">${t('wkx.title')}</h3><p class="hint">${t('wkx.intro')}</p><div class="list">
+      ${list.map(wk => { const ov = (st().weeks || {})[wk]; return `<button class="list-row ${ov ? 'on' : ''}" data-a="wkAdjust" data-wk="${wk}"><span><b>${wk === cur ? t('wkx.this') : wk === E.addDays(cur, 7) ? t('wkx.next') : t('wkx.week')} · ${wkRange(wk)}</b><small>${ov ? wkSummary(ov) : t('wkx.regular')}</small></span>${ICON.edit}</button>`; }).join('')}</div></div>`;
+  }
+  A.wkAdjust = d => {
+    const wk = +d.wk; const ov = (st().weeks || {})[wk];
+    ui.wk = { wk, days: (ov && ov.days ? ov.days : regularDays(wk)).slice(), type: (ov && ov.routineType) || '' };
+    App.openSheet(wkSheet);
+  };
+  function wkSheet() {
+    const w = ui.wk; const s = S();
+    const rec = E.recommendedType(s, w.days.length);
+    const usual = t('rt.' + (s.routineType === 'recommended' ? E.recommendedType(s) : s.routineType));
+    const row = (v, label, sub) => `<button class="list-row ${w.type === v ? 'on' : ''}" data-a="wkType" data-v="${v}"><span><b>${label}</b>${sub ? `<small>${sub}</small>` : ''}</span><i class="rdot"></i></button>`;
+    return `<div class="sheet-head"><h2>${t('wkx.sheet')}</h2><button class="icon-btn circ" data-a="closeSheet">${ICON.x}</button></div>
+      <p class="muted small-p">${t('wkx.hint', { d: wkRange(w.wk) })}</p>
+      <label>${t('wkx.days')} (${w.days.length})</label>
+      <div class="daypick">${[0, 1, 2, 3, 4, 5, 6].map(i => `<button class="${w.days.includes(i) ? 'on' : ''}" data-a="wkDay" data-i="${i}">${t('wd.' + i)}</button>`).join('')}</div>
+      <label class="mt">${t('wkx.split')}</label>
+      <div class="list">${row('', t('wkx.usual'), usual)}${WK_TYPES.filter(v => E.routineValid(v, s)).map(v => row(v, t('rt.' + v), v === rec ? t('wkx.rec', { n: w.days.length }) : '')).join('')}</div>
+      <button class="btn primary" data-a="wkSave">${t('save')}</button>
+      ${(st().weeks || {})[w.wk] ? `<button class="btn secondary" data-a="wkReset">${t('wkx.reset')}</button>` : ''}`;
+  }
+  A.wkDay = d => { const w = ui.wk; const i = +d.i; const k = w.days.indexOf(i); if (k >= 0) w.days.splice(k, 1); else w.days.push(i); App.refreshSheet(); };
+  A.wkType = d => { ui.wk.type = d.v || ''; App.refreshSheet(); };
+  function wkApply(fn) {
+    const weeks = st().weeks = st().weeks || {};
+    fn(weeks);
+    const old = E.addDays(E.weekStart(Date.now()), -56);
+    Object.keys(weeks).forEach(k => { if (+k < old) delete weeks[k]; });
+    st().nextAt = null; st().draft = null; st().todayMin = null;
+    App.save(); App.closeSheet(); App.render();
+  }
+  A.wkSave = () => {
+    const w = ui.wk;
+    if (!w.days.length) { App.notice(t('notice'), t('days.needOne')); return; }
+    const days = w.days.slice().sort((a, b) => a - b);
+    wkApply(weeks => {
+      const prev = weeks[w.wk];
+      if (!w.type && JSON.stringify(days) === JSON.stringify(regularDays(w.wk))) delete weeks[w.wk];      // nothing differs from the regular program
+      else weeks[w.wk] = { days, routineType: w.type || null, rot: prev && prev.routineType === (w.type || null) ? prev.rot || 0 : 0 };
+    });
+  };
+  A.wkReset = () => wkApply(weeks => { delete weeks[ui.wk.wk]; });
   /** the originally planned day whose workout was moved onto `day`, if any */
   const movedIn = day => Object.keys(st().moved || {}).find(k => st().moved[k] === day);
   A.calMoveOpen = () => {
