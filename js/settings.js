@@ -39,6 +39,7 @@
     ${App.toggleRow('settings.prefs.notifications', t('pref.notifications'), t('pref.notifications.d'))}
     ${App.toggleRow('settings.prefs.fullscreen', t('pref.fullscreen'), t('pref.fullscreen.d'))}
     ${q(t('pref.superset'), 'superset')}${App.seg('settings.prefs.supersetStrategy', [['never', t('strat.never')], ['short', t('strat.short')], ['always', t('strat.always')]])}
+    ${S().prefs.supersetStrategy === 'never' ? '' : App.toggleRow('settings.prefs.supersetIsoOnly', t('pref.ssIso'), t('pref.ssIso.d'))}
     ${q(t('pref.dropset'), 'dropset')}${App.seg('settings.prefs.dropsetStrategy', [['never', t('strat.never')], ['short', t('strat.short')], ['always', t('strat.always')]])}
     ${q(t('pref.rest'))}${App.seg('settings.prefs.restMode', [['min', t('rest.min')], ['std', t('rest.std')]])}${hint(t('rest.hint'))}
     ${q(t('sub.repRanges'))}<button class="menu-row" data-a="wizStep" data-step="${App.stepIdx('repRanges')}"><span><b>${(S().repRanges || []).join(', ')}</b><small>${t('rr.q')}</small></span>${ICON.right}</button>

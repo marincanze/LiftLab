@@ -15,9 +15,12 @@
 
   // ================= DRAFT =================
   const todayMin = () => st().todayMin || E.budgetFor(st(), E.nextWorkoutAt(st(), Date.now()));
+  /** "no supersets in this workout": a one-off switch, cleared when the workout is saved or skipped and after 12 hours */
+  const ssOff = () => !!st().ssOffAt && Date.now() - st().ssOffAt < 12 * 3600e3;
+  const ssRow = on => `<button class="toggle-row" data-a="ssToday"><span><b>${t('ss.today')}</b><small>${t('ss.today.d')}</small></span><i class="switch ${on ? 'on' : ''}"><i></i></i></button>`;
   function draftSig(w, minutes, deload) {
     const s = S();
-    return JSON.stringify([w.id, w.muscles, minutes, deload, s.envId, s.experience, s.units, s.prio, s.prefs.restMode, s.prefs.supersetStrategy, s.prefs.dropsetStrategy, s.warmups, s.rirTraining, s.mode,
+    return JSON.stringify([w.id, w.muscles, minutes, deload, s.envId, s.experience, s.units, s.prio, s.prefs.restMode, s.prefs.supersetStrategy, !!s.prefs.supersetIsoOnly, ssOff(), s.prefs.dropsetStrategy, s.warmups, s.rirTraining, s.mode,
       s.consistency, s.repRanges, s.goal, s.bodyweight, s.sex, s.injuries, s.profile, st().history.length, st().disliked, st().customEx.length, E.env(st()).rev]);
   }
   function getDraft(force) {
@@ -27,7 +30,7 @@
     const deload = E.deloadState(st(), Date.now()).deloading;
     const sig = draftSig(w, minutes, deload);
     if (force || !st().draft || st().draft.sig !== sig) {
-      st().draft = { sig, wid: w.id, minutes, deload, items: E.buildPlan(st(), w, minutes, { deload }) };
+      st().draft = { sig, wid: w.id, minutes, deload, items: E.buildPlan(st(), w, minutes, { deload, noSupersets: ssOff() }) };
       App.save();
     }
     return st().draft;
@@ -89,6 +92,16 @@
     a.beeped = a.restEnd <= now;
     App.save(); App.tick();
   };
+  A.ssToday = () => {
+    const a = st().active;
+    if (!a) { st().ssOffAt = ssOff() ? null : Date.now(); App.save(); ui.expanded = -1; App.keepScroll(App.render); return; }
+    a.noSS = !a.noSS;
+    if (a.noSS) {
+      const off = new Set(a.items.filter(x => x.ss && x.status !== 'done').map(x => x.ss));     // supersets that still have work left
+      a.items.forEach(it => { if (off.has(it.ss)) { it.ssWas = it.ss; delete it.ss; } });
+    } else a.items.forEach(it => { if (it.ssWas) { it.ss = it.ssWas; delete it.ssWas; } });
+    E.estimate(a.items, S()); App.save(); App.keepScroll(App.render);
+  };
   A.toggleVideo = () => { S().prefs.hideVideos = !S().prefs.hideVideos; App.save(); App.keepScroll(App.render); };
   A.expand = d => { const i = +d.i; ui.expanded = ui.expanded === i ? -1 : i; App.keepScroll(App.render); };
   A.weightTap = d => {
@@ -130,6 +143,7 @@
       ${early ? `<p class="hint">${ICON.clock}<span>${t('w.early')}</span></p>` : ''}
       <button class="btn primary big-btn" data-a="startSession" id="tour-start">${t('w.start')}</button>
       ${d.items.some(it => it.calib) ? `<p class="hint calib">${t('w.calib')}</p>` : ''}
+      ${s.prefs.supersetStrategy !== 'never' || ssOff() ? ssRow(ssOff()) : ''}
       <h3 class="sec-h">${t('w.preview')}</h3>
       ${d.items.length ? d.items.map((it, i) => draftCard(it, i)).join('') : `<p class="center muted">${t('w.empty')}</p>`}
       <p class="center muted">${t('w.notEnough')} <a href="#" data-a="extend" class="link">${t('w.extend')}</a></p>
@@ -184,6 +198,7 @@
       ${a.pausedAt ? `<div class="card note-card warn"><b>${t('a.paused')}</b><p>${t('a.pausedText')}</p></div>` : ''}
       ${a.items.map((it, i) => activeCard(it, i)).join('')}
       ${allDone ? `<div class="card glow center"><h3 class="card-title">${t('a.allDone')}</h3><button class="btn primary" data-a="finishSession">${t('a.save')}</button></div>` : ''}
+      ${a.noSS || a.items.some(it => it.ss && it.status !== 'done') ? ssRow(a.noSS) : ''}
       <div class="btn-row"><button class="btn secondary" data-a="addExercise" id="tour-add">${t('w.add')}</button><button class="btn secondary" data-a="extendActive" id="tour-extend">${t('w.extendBtn')}</button></div>
       <button class="btn secondary" data-a="endSession" id="tour-endw">${t('a.end')}</button>
       <button class="btn warn" data-a="cancelSession" id="tour-cancel">${t('a.cancel')}</button>`;
@@ -233,14 +248,17 @@
     const k = it.logged.length;
     const rirT = E.rirTarget(it, k);
     const est = S().prefs.showEstReps;
+    // the last working set is followed by drop sets: say so before it starts, with the weights to put aside
+    const dropW = dropPlan(it, ex);
+    const dropNote = dropW ? `<p class="drop-note">${ICON.layers}<span><b>${t(it.phase === 'perform' ? 'a.dropNow' : 'a.dropNext')}</b> ${t('a.dropPlan', { w: dropW })}</span></p>` : '';
     const wBlock = `<div><label>${ex.load === 'band' ? t('a.band') : ex.assist ? t('a.assist') : t('c.weight')}</label><div class="big wv" data-a="weightTap" data-i="${i}">${App.fmtW(it.weight, ex)}</div>
             <div class="wbtns"><button data-a="wStep" data-i="${i}" data-d="-1">${ICON.minus}</button><button data-a="wStep" data-i="${i}" data-d="1">${ICON.plus}</button></div></div>`;
-    if (it.phase === 'prepare') return `<div class="panel one"><div><label>${t('a.prepare')}</label><div class="timer" data-tick="since"></div></div></div>
+    if (it.phase === 'prepare') return `${dropNote}<div class="panel one"><div><label>${t('a.prepare')}</label><div class="timer" data-tick="since"></div></div></div>
         <button class="btn primary" id="tour-startex" data-a="${it.wu && s.warmups ? 'startWarmup' : 'startFirst'}" data-i="${i}">${it.wu && s.warmups ? t('a.startWarmup') : t('a.startFirst')}</button>`;
     if (it.phase === 'warmup') {
       const wu = it.warmups;
       const wtxt = w => (w.band ? t('a.bandLight') : ex.load === 'bw' && w.w <= 0 ? '' : App.fmtW(w.w, ex));
-      return `<div class="panel" id="tour-rec">
+      return `${dropNote}<div class="panel" id="tour-rec">
           <div><label>${t('a.warmup')}</label><div class="timer" data-tick="warm"></div></div>
           <div>${wu.map((w, n) => `<label>${t('a.wuSet' + (n + 1))}</label><div class="big">${w.reps} ${t('reps')}${wtxt(w) ? ` <small>${wtxt(w)}</small>` : ''}</div>`).join('')}</div></div>
         ${hint(wu.length >= 2 && !wu[0].band && !(ex.load === 'bw' && wu[0].w <= 0) ? t('a.wuHint2', { a: App.fmtW(wu[0].w, ex), b: App.fmtW(wu[1].w, ex) }) : wu[0] && wu[0].band ? t('a.wuHintBand') : wu.length >= 2 ? t('a.wuHintBw') : t('a.wuHint1', { a: App.fmtW((wu[0] || {}).w || 0, ex) }))}
@@ -248,7 +266,7 @@
     }
     if (it.phase === 'perform') {
       const pred = E.predict(it, ex, s, it.weight);
-      return `<div class="panel p3" id="tour-rec">
+      return `${dropNote}<div class="panel p3" id="tour-rec">
           <div><label>${t('a.perform')}</label><div class="timer" data-tick="since"></div></div>
           <div><label>RIR</label><div class="big">${rirT}</div></div>${wBlock}
           <div><label>${t('a.set')}</label><div class="big">${k + 1}<small>/${it.sets}</small></div></div>
@@ -263,7 +281,7 @@
       const partner = partnerOf(it);
       return `<div class="rest-big" id="tour-rest"><label data-tick="restLabel">${t('restNow')}</label>
           <div class="rest-row"><button class="round" data-a="restAdj" data-d="-15" aria-label="-15 s">−15</button><div class="timer xl" data-tick="rest"></div><button class="round" data-a="restAdj" data-d="15" aria-label="+15 s">+15</button></div></div>
-        <div class="panel p3">
+        ${dropNote}<div class="panel p3">
           <div><label>${t('a.nextUp')}</label><div class="big">${k + 1}<small>/${it.sets}</small></div></div>
           <div><label>RIR</label><div class="big">${rirT}</div></div>${wBlock}
           <div><label>${t('c.reps')}</label><div class="big">${it.reps.join(' – ')}</div></div>
@@ -273,6 +291,12 @@
     }
     return '';
   }
+  /** weights for the drops after the coming set ("22.5 kg → 17.5 kg"), or '' when that set is not the last one or has no drops */
+  function dropPlan(it, ex) {
+    if (!it.drops || it.logged.length + 1 !== it.sets) return '';
+    return E.dropWeights(it, ex, st(), it.drops).map(w => App.fmtW(w, ex)).join(' → ');
+  }
+  const goMsg = it => { const w = it ? dropPlan(it, EX[it.exId]) : ''; return w ? t('goNowDrop', { w }) : t('goNow'); };
   function bandChips(ex, cur, act) {
     const en = E.env(st());
     const bands = (en.bands && en.bands.length) ? en.bands : DEFAULT_BANDS.map(b => ({ key: b[0], w: b[1] }));
@@ -349,7 +373,7 @@
     if (!(await App.confirmDlg(t('w.extendT'), t('w.extendQ'), t('w.extendBtn')))) return;
     const a = st().active; a.budgetMin += 10;
     const w = E.routine(st()).find(x => x.id === a.wid) || E.currentWorkout(st());
-    const plan = E.buildPlan(st(), w, a.budgetMin + 10);
+    const plan = E.buildPlan(st(), w, a.budgetMin + 10, { noSupersets: !!a.noSS });
     const have = new Set(a.items.map(x => x.exId));
     let added = 0;
     plan.filter(x => !have.has(x.exId)).slice(0, 2).forEach(it => { a.items.push(toActiveItem(it, warmSet(a.items.length), a.items.length)); added++; });
@@ -359,7 +383,7 @@
   };
   A.skipSession = async () => {
     if (!(await App.confirmDlg(t('w.skip'), t('w.skipQ'), t('w.skip'), 'warn'))) return;
-    st().rotation++; st().draft = null; st().todayMin = null; st().nextAt = null;
+    st().rotation++; st().draft = null; st().todayMin = null; st().nextAt = null; st().ssOffAt = null;
     st().skipped = st().skipped || []; st().skipped.push(Date.now());
     App.save(); App.render();
   };
@@ -751,7 +775,7 @@
     if (a.deload && !st().firstDeloadDone) { st().firstDeloadDone = true; st().lastDeloadAt = a.start; }
     const r = E.routine(st()); const idx = r.findIndex(w => w.id === a.wid);
     st().rotation = idx >= 0 ? idx + 1 : st().rotation + 1;
-    st().active = null; st().draft = null; st().todayMin = null; st().nextAt = null; ui.log = null; ui.focus = false;
+    st().active = null; st().draft = null; st().todayMin = null; st().nextAt = null; st().ssOffAt = null; ui.log = null; ui.focus = false;
     App.save(); App.releaseWakeLock();
     ui.pages = []; ui.tab = 'home'; App.render();
     if (prs.length && s.prefs.prNotifications) { App.alertUser(t('pr.title'), 'pr'); await App.dialog({ title: t('pr.title'), cls: 'pr-dlg', body: `<p>${t('pr.text')}</p><ul class="notes">${prs.map(p => `<li><b>${esc(App.exName(p.exId))}</b> — ${t('pr.' + p.type)}</li>`).join('')}</ul>`, buttons: [{ label: t('gotIt'), v: 'ok', cls: 'primary' }] }); }
@@ -822,13 +846,13 @@
       else if (k === 'endAt') { const end = predictedEnd(a, eff); el.textContent = App.fmtTime(end); el.classList.toggle('late', end > a.start + a.budgetMin * 60000 + 60000); }
     });
     const cur = a && a.cur >= 0 && !a.pausedAt ? a.items[a.cur] : null;
-    if (cur && cur.phase === 'rest' && a.restEnd && !a.beeped) App.scheduleTimerAlert(a.restEnd, t('goNow'));
+    if (cur && cur.phase === 'rest' && a.restEnd && !a.beeped) App.scheduleTimerAlert(a.restEnd, goMsg(cur));
     else if (cur && cur.phase === 'warmup' && a.warmEnd && !a.beeped) App.scheduleTimerAlert(a.warmEnd, t('a.wuDone'));
     else App.scheduleTimerAlert(null);
     if (!a || a.cur < 0 || a.pausedAt) return;
     const it = a.items[a.cur]; if (!it) return;
     if (it.phase === 'rest' && a.restEnd && !a.beeped && now >= a.restEnd) {
-      a.beeped = true; App.alertUser(t('goNow'));
+      a.beeped = true; App.alertUser(goMsg(it));
       if (S().prefs.autoStart) { it.phase = 'perform'; a.phaseStart = now; a.restEnd = null; App.save(); App.keepScroll(App.render); } else App.save();
     }
     if (it.phase === 'warmup' && a.warmEnd && !a.beeped && now >= a.warmEnd) {

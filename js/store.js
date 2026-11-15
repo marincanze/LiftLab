@@ -49,7 +49,7 @@ const Store = (() => {
         profile: blankProfile(), injuries: [],
         envId: gym.id,
         prefs: { hideVideos: false, logBothSides: true, autoStart: false, showEstReps: true, prNotifications: true, suggestions: true, sound: true, notifications: true, tutorials: true,
-          supersetStrategy: 'short', dropsetStrategy: 'never', restMode: 'min', fullscreen: false },
+          supersetStrategy: 'short', supersetIsoOnly: false, dropsetStrategy: 'never', restMode: 'min', fullscreen: false },
         onboarded: false, setupStep: 0, tours: {}, whatsNewSeen: null
       },
       envs: [gym], favorites: [], disliked: [], customEx: [], swaps: {}, exPrefs: {}, notes: {},

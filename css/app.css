@@ -455,6 +455,9 @@ details.acc[open] summary::after { content: '⌃'; }
 .rest-row { display: flex; align-items: center; justify-content: space-between; gap: 10px; }
 .rest-row .round { width: 52px; height: 52px; background: var(--card); color: var(--acc-text); border: 1px solid var(--line); font-weight: 700; font-size: 15px; }
 .timer.xl { font-size: 64px; letter-spacing: -2px; }
+.drop-note { display: flex; gap: 8px; align-items: flex-start; margin: 12px 0 0; padding: 9px 12px; border-radius: 10px; background: var(--warn-soft); font-size: 14px; line-height: 1.35; }
+.drop-note svg { flex: none; width: 16px; height: 16px; margin-top: 2px; color: var(--warn); }
+.drop-note b { color: var(--warn); }
 /* weekly plan */
 .wk-link { margin-top: 8px; padding-left: 0; display: inline-flex; align-items: center; gap: 4px; }
 .wk-link svg { width: 16px; height: 16px; }

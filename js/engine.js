@@ -404,16 +404,18 @@ const Engine = (() => {
   }
 
   /** pair compatible exercises into supersets (non-overlapping muscles, antagonists preferred) */
-  function applySupersets(items, strategy, over) {
+  function applySupersets(items, strategy, over, opts = {}) {
     items.forEach(it => { delete it.ss; });
-    if (strategy === 'never' || items.length < 2) return;
+    if (opts.off || strategy === 'never' || items.length < 2) return;
+    // heavy compounds are never paired; with `isoOnly` only single-joint exercises are
+    const pairable = it => { const ty = EX[it.exId].type; return opts.isoOnly ? ty === 'iso' : ty !== 'heavy'; };
     if (strategy === 'short' && !over) return;
     const pairs = [['upperChest', 'upperBack'], ['lowerChest', 'lats'], ['biceps', 'triceps'], ['quads', 'hamstrings'], ['frontDelts', 'rearDelts'], ['sideDelts', 'rearDelts'], ['abs', 'erectors'], ['gluteMax', 'abs'], ['calves', 'abs'], ['adductors', 'gluteMed']];
     let g = 1;
     const taken = new Set();
     pairs.forEach(([a, b]) => {
-      const ia = items.findIndex(it => it.m === a && !taken.has(it) && EX[it.exId].type !== 'heavy');
-      const ib = items.findIndex(it => it.m === b && !taken.has(it) && EX[it.exId].type !== 'heavy');
+      const ia = items.findIndex(it => it.m === a && !taken.has(it) && pairable(it));
+      const ib = items.findIndex(it => it.m === b && !taken.has(it) && pairable(it));
       if (ia < 0 || ib < 0) return;
       const id = 'ss' + g++;
       items[ia].ss = id; items[ib].ss = id;
@@ -453,7 +455,7 @@ const Engine = (() => {
     });
     const full = estimate(items, s);
     const over = full > minutes * 60 * 1.05 && minutes <= 75;
-    applySupersets(items, s.prefs.supersetStrategy || 'short', over);
+    applySupersets(items, s.prefs.supersetStrategy || 'short', over, { off: !!opts.noSupersets, isoOnly: !!s.prefs.supersetIsoOnly });
     applyDropsets(items, s.prefs.dropsetStrategy || 'never', over);
     fit(items, st, w.id, minutes * 60, used, deload);
     items.forEach(it => finalize(it, st, deload));
@@ -721,13 +723,20 @@ const Engine = (() => {
     }
     return null;
   }
-  /** drop set weights after a working set */
+  /**
+   * Share of the load taken off for each drop. Drop-set studies mostly use ~20 % steps (Angleri et al. 2017,
+   * Fink et al. 2018): small enough to keep the tension high, large enough for several more reps to failure.
+   * Heavy low-rep sets (top of the range ≤ 10) get 25 %, otherwise the drop would only allow two or three reps.
+   */
+  const dropCut = item => (((item.reps || [8, 12])[1] <= 10) ? 0.25 : 0.20);
+  /** drop set weights after a working set: each drop is cut from the previous weight and snapped to the nearest weight the equipment allows */
   function dropWeights(item, ex, st, count) {
     const out = [];
+    const cut = dropCut(item);
     let w = item.weight;
     for (let i = 0; i < count; i++) {
-      const target = ex.assist ? w * 1.3 + 2 : w * 0.78;
-      let nw = roundW(target, ex, st, ex.assist ? 'nearest' : 'down');
+      const target = ex.assist ? w * 1.3 + 2 : w * (1 - cut);
+      let nw = roundW(target, ex, st, 'nearest');
       if (!ex.assist && nw >= w - 1e-6) nw = stepW(w, ex, st, -1);
       if (ex.assist && nw <= w + 1e-6) nw = stepW(w, ex, st, 1);
       out.push(nw); w = nw;
