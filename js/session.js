@@ -253,7 +253,7 @@
           <div><label>RIR</label><div class="big">${rirT}</div></div>${wBlock}
           <div><label>${t('a.set')}</label><div class="big">${k + 1}<small>/${it.sets}</small></div></div>
           <div><label>${t('c.reps')}</label><div class="big">${it.reps.join(' – ')}</div></div>
-          ${est ? `<div><label>${t('a.estReps')}</label><div class="big ${pred < it.reps[0] || pred > it.reps[1] ? 'warn' : ''}">${pred}</div></div>` : '<div></div>'}</div>
+          ${est ? `<div class="est"><label>${t('a.estReps')}</label><div class="big ${pred < it.reps[0] || pred > it.reps[1] ? 'warn' : ''}">${pred}</div></div>` : '<div></div>'}</div>
         <div class="btn-row"><button class="btn secondary" data-a="finishEx" data-i="${i}">${t('a.finish')}</button><button class="btn primary" id="tour-log" data-a="logSet" data-i="${i}">${t('a.logSet')}</button></div>`;
     }
     if (it.phase === 'log') return logForm(it, i, ex);
@@ -267,7 +267,7 @@
           <div><label>${t('a.nextUp')}</label><div class="big">${k + 1}<small>/${it.sets}</small></div></div>
           <div><label>RIR</label><div class="big">${rirT}</div></div>${wBlock}
           <div><label>${t('c.reps')}</label><div class="big">${it.reps.join(' – ')}</div></div>
-          ${est ? `<div><label>${t('a.estReps')}</label><div class="big ${pred < it.reps[0] || pred > it.reps[1] ? 'warn' : ''}">${pred}</div></div>` : '<div></div>'}
+          ${est ? `<div class="est"><label>${t('a.estReps')}</label><div class="big ${pred < it.reps[0] || pred > it.reps[1] ? 'warn' : ''}">${pred}</div></div>` : '<div></div>'}
           ${partner ? `<div><label>${t('superset')}</label><div class="muted small">${esc(App.exName(partner.exId))}</div></div>` : '<div></div>'}</div>
         <div class="btn-row"><button class="btn secondary" data-a="finishEx" data-i="${i}">${t('a.finish')}</button><button class="btn primary" data-a="nextSet" data-i="${i}">${t('a.nextSet')}</button></div>`;
     }
@@ -817,7 +817,7 @@
       if (k === 'elapsed') el.textContent = App.fmtClock(elapsedMs(a, now) / 1000);
       else if (k === 'since') el.textContent = App.fmtClock((eff - (a.phaseStart || eff)) / 1000);
       else if (k === 'warm') { const r = (a.warmEnd - eff) / 1000; el.textContent = App.signedClock(r); el.classList.toggle('over', r < 0); }
-      else if (k === 'rest') { if (a.restEnd == null) { el.textContent = '00:00'; return; } const r = (a.restEnd - eff) / 1000; el.textContent = App.signedClock(r); el.classList.toggle('over', r <= 0); }
+      else if (k === 'rest') { if (a.restEnd == null) { el.textContent = '00:00'; return; } const r = (a.restEnd - eff) / 1000; el.textContent = App.signedClock(r); el.classList.toggle('over', r < 0); }
       else if (k === 'restLabel') el.textContent = a.restEnd && a.restEnd > eff ? t('restNow') : t('goNow');
       else if (k === 'endAt') { const end = predictedEnd(a, eff); el.textContent = App.fmtTime(end); el.classList.toggle('late', end > a.start + a.budgetMin * 60000 + 60000); }
     });

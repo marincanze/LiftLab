@@ -328,7 +328,7 @@ const App = (() => {
   /** system notification; goes through the service worker because Android does not allow `new Notification()` */
   function notify(msg) {
     if (!canNotify()) return;
-    const opts = { body: msg, tag: 'liftlab-timer', renotify: true, icon: 'icons/icon-192.png', badge: 'icons/icon-192.png', vibrate: [250, 120, 250, 120, 400] };
+    const opts = { body: msg, tag: 'liftlab-timer', renotify: true, icon: 'icons/icon-192.png', badge: 'icons/badge.png', vibrate: [250, 120, 250, 120, 400] };
     const plain = () => { try { new Notification('LiftLab', opts); } catch (e) { /* ignore */ } };
     if ('serviceWorker' in navigator && navigator.serviceWorker.controller) navigator.serviceWorker.ready.then(r => r.showNotification('LiftLab', opts)).catch(plain);
     else plain();
@@ -407,6 +407,50 @@ const App = (() => {
   document.addEventListener('visibilitychange', () => { if (!document.hidden && st.active) { requestWakeLock(); tick(); } });
   if (window.matchMedia) window.matchMedia('(prefers-color-scheme: dark)').addEventListener('change', applyTheme);
   setInterval(tick, 1000);
+
+  // ---------- bottom sheets: drag down to dismiss ----------
+  // The drag starts on the handle / header, or anywhere in the sheet while its content is scrolled to the top.
+  (function () {
+    const root = $('#sheet');
+    let d = null;
+    root.addEventListener('touchstart', e => {
+      d = null;
+      const sh = e.target.closest('.sheet');
+      if (!sh || e.touches.length !== 1) return;
+      const p = e.touches[0];
+      const head = !!e.target.closest('.grab, .sheet-head') || p.clientY - sh.getBoundingClientRect().top < 36;
+      if (!head && (sh.scrollTop > 0 || e.target.closest('input, textarea, select, .handle'))) return;
+      d = { sh, x: p.clientX, y: p.clientY, t: Date.now(), dy: 0, on: false };
+    }, { passive: true });
+    root.addEventListener('touchmove', e => {
+      if (!d) return;
+      const p = e.touches[0];
+      const dy = p.clientY - d.y, dx = p.clientX - d.x;
+      if (!d.on) {
+        if (dy < -6 || Math.abs(dx) > Math.abs(dy) + 6) { d = null; return; }      // scrolling the list or moving sideways
+        if (dy < 8) return;
+        d.on = true; d.sh.style.animation = 'none'; d.sh.style.transition = 'none';
+      }
+      d.dy = Math.max(0, dy - 8);
+      d.sh.style.transform = `translateY(${d.dy}px)`;
+      if (e.cancelable) e.preventDefault();
+    }, { passive: false });
+    const end = () => {
+      if (!d) return;
+      const { sh, dy, on, t: t0 } = d;
+      d = null;
+      if (!on) return;
+      const fast = dy > 40 && dy / Math.max(1, Date.now() - t0) > 0.5;
+      sh.style.transition = 'transform .18s ease-out';
+      if (dy > 110 || fast) {
+        const fn = ui.sheetFn;
+        sh.style.transform = 'translateY(100%)';
+        setTimeout(() => { if (ui.sheetFn === fn && sh.isConnected) closeSheet(); }, 170);
+      } else sh.style.transform = '';
+    };
+    root.addEventListener('touchend', end);
+    root.addEventListener('touchcancel', end);
+  })();
 
   return {
     get st() { return st; }, set st(v) { st = v; },
