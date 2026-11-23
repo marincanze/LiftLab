@@ -140,6 +140,7 @@
         <div class="card stat" data-a="editTime" id="tour-time"><label>${t('w.time')}</label><div class="big hm">${App.fmtHM(d.minutes)}</div><span class="edit">${ICON.edit}</span></div>
       </div>
       <div class="card stat" data-a="pickEnv" id="tour-env"><label>${t('w.env')}</label><div class="title-md">${esc(env.name)}</div><span class="edit">${ICON.edit}</span></div>
+      <div class="card stat" data-a="editBW" id="tour-bw"><label>${t('w.bw')}</label><div class="title-md">${App.fmtBW(s.bodyweight)} ${App.unitW()} <small class="muted">· ${App.bwWhen()}</small></div><span class="edit">${ICON.edit}</span></div>
       <div class="grid2">
         <div class="card stat"><label>${t('w.estDur')}</label><div class="big ${min > d.minutes + 2 ? 'warn' : ''}">${min}<small>min</small></div></div>
         <div class="card stat"><label>${t('w.kcal')}</label><div class="big">${E.kcal(min, s.bodyweight)}<small>kcal</small></div></div>
@@ -181,6 +182,22 @@
     return total;
   }
   const predictedEnd = (a, now) => now + remainingWork(a, now) * 1000;
+  /** seconds from the start of the rest timer after the previous set of `it` until `at` */
+  function restBefore(it, at) { const l = it.logged[it.logged.length - 1]; return l && l.t && at ? Math.max(0, (at - l.t) / 1000) : undefined; }
+  /** reps expected in the coming set: while resting it is assumed to start when the timer ends, or now once that has passed */
+  function estReps(a, it, now) {
+    const eff = a.pausedAt || now;
+    const at = it.phase === 'rest' ? Math.max(eff, a.restEnd || eff) : a.phaseStart;
+    return E.predict(it, EX[it.exId], S(), it.weight, restBefore(it, at));
+  }
+  /** sticky bar at the top of a running workout: time so far, predicted end, pause and full-screen buttons */
+  function sessionBar(a, now, focus) {
+    const end = predictedEnd(a, now);
+    return `<div class="sess-bar ${a.pausedAt ? 'paused' : ''}">
+        <div class="sb-dur" id="tour-dur"><label>${t('a.duration')}</label><b class="sb-time" data-tick="elapsed">${App.fmtClock(elapsedMs(a, now) / 1000)}</b></div>
+        <div class="sb-end"><label>${t('a.endTime')}</label><span class="pill ${end > a.start + a.budgetMin * 60000 + 60000 ? 'late' : ''}" id="tour-end" data-tick="endAt">${App.fmtTime(end)}</span></div>
+        <div class="pet-tools"><button class="icon-btn circ" data-a="pauseToggle" aria-label="pause">${a.pausedAt ? ICON.play : ICON.pause}</button><button class="icon-btn circ" data-a="focusMode" aria-label="fullscreen">${focus ? ICON.collapse : ICON.expand}</button></div></div>`;
+  }
   function nextRest(a, it) {
     const ex = EX[it.exId];
     const now = Date.now();
@@ -197,8 +214,7 @@
     const allDone = a.items.every(it => it.status === 'done');
     a.items.forEach((it, i) => { it._i = i; });
     const now = Date.now();
-    return `<div class="pet-row"><div><label>${t('a.endTime')}</label><span class="pill ${predictedEnd(a, now) > a.start + a.budgetMin * 60000 + 60000 ? 'late' : ''}" id="tour-end" data-tick="endAt">${App.fmtTime(predictedEnd(a, now))}</span></div>
-        <div class="pet-tools"><button class="icon-btn circ" data-a="pauseToggle" aria-label="pause">${a.pausedAt ? ICON.play : ICON.pause}</button><button class="icon-btn circ" data-a="focusMode" aria-label="fullscreen">${ICON.expand}</button></div></div>
+    return `${sessionBar(a, now, false)}
       ${a.pausedAt ? `<div class="card note-card warn"><b>${t('a.paused')}</b><p>${t('a.pausedText')}</p></div>` : ''}
       ${a.items.map((it, i) => activeCard(it, i)).join('')}
       ${allDone ? `<div class="card glow center"><h3 class="card-title">${t('a.allDone')}</h3><button class="btn primary" data-a="finishSession">${t('a.save')}</button></div>` : ''}
@@ -213,8 +229,7 @@
     a.items.forEach((it, k) => { it._i = k; });
     const prev = [...a.items.keys()].filter(k => k < i).pop();
     const next = a.items.findIndex((x, k) => k > i);
-    return `<div class="pet-row"><div><label>${t('a.endTime')}</label><span class="pill" data-tick="endAt">${App.fmtTime(predictedEnd(a, Date.now()))}</span></div>
-        <div class="pet-tools"><button class="icon-btn circ" data-a="pauseToggle">${a.pausedAt ? ICON.play : ICON.pause}</button><button class="icon-btn circ" data-a="focusMode">${ICON.collapse}</button></div></div>
+    return `${sessionBar(a, Date.now(), true)}
       <div class="focus-nav"><button class="btn ghost inline" data-a="focusGo" data-i="${prev ?? -1}" ${prev == null ? 'disabled' : ''}>${ICON.left} ${t('a.prevEx')}</button><span class="muted">${i + 1} / ${a.items.length}</span><button class="btn ghost inline" data-a="focusGo" data-i="${next}" ${next < 0 ? 'disabled' : ''}>${t('a.nextEx')} ${ICON.right}</button></div>
       ${i >= 0 ? activeCard(a.items[i], i, true) : ''}
       ${a.items.every(it => it.status === 'done') ? `<div class="card glow center"><h3 class="card-title">${t('a.allDone')}</h3><button class="btn primary" data-a="finishSession">${t('a.save')}</button></div>` : ''}`;
@@ -222,10 +237,12 @@
   A.focusMode = () => { ui.focus = !ui.focus; S().prefs.fullscreen = ui.focus; App.save(); App.render(); window.scrollTo(0, 0); };
   A.focusGo = d => { const i = +d.i; if (i < 0) return; const a = st().active; if (a.items[i].status !== 'done' && a.items[i].status !== 'active') setCurrent(i); else if (a.items[i].status === 'done') { ui.expanded = i; a.cur = i; } App.save(); App.render(); };
 
+  const prMark = l => (l.pr ? `<span class="prb ${l.pr === 'rel' ? 'rel' : ''}" title="${t(l.pr === 'rel' ? 'pr.relTitle' : 'pr.title')}">${ICON.trophy}${l.pr === 'rel' ? '<small>/kg</small>' : ''}</span>` : '');
+  App.prMark = prMark;
   function setsTable(it, i, ex) {
     if (!it.logged.length) return '';
     return `<table class="sets"><thead><tr><th>${t('a.set')}</th><th>${t('c.reps')}</th><th>RIR</th><th>${t('c.weight')}</th><th></th></tr></thead><tbody>
-      ${it.logged.map((l, k) => `<tr><td>${k + 1}</td><td>${l.repsR != null ? `${l.repsL}/${l.repsR}` : l.reps}</td><td>${l.rir}</td><td>${App.fmtW(l.w, ex)}${l.drops && l.drops.length ? `<small class="muted"> +${l.drops.map(x => `${App.fmtNum(App.wVal(x.w, App.unitsFor(ex)))}×${x.reps}`).join(', ')}</small>` : ''}</td>
+      ${it.logged.map((l, k) => `<tr class="set-row" data-a="editSet" data-i="${i}" data-k="${k}"><td>${k + 1}${prMark(l)}</td><td>${l.repsR != null ? `${l.repsL}/${l.repsR}` : l.reps}</td><td>${l.rir}</td><td>${App.fmtW(l.w, ex)}${l.drops && l.drops.length ? `<small class="muted"> +${l.drops.map(x => `${App.fmtNum(App.wVal(x.w, App.unitsFor(ex)))}×${x.reps}`).join(', ')}</small>` : ''}</td>
         <td><button class="icon-btn sm" data-a="editSet" data-i="${i}" data-k="${k}" aria-label="edit">${ICON.edit}</button></td></tr>`).join('')}</tbody></table>`;
   }
   function activeCard(it, i, focus) {
@@ -241,7 +258,7 @@
       if (!(cur && (it.phase === 'log' || it.phase === 'drops' || it.phase === 'rest'))) body += videoArea(i, ex, !it.logged.length && !done);
       body += setsTable(it, i, ex);
       if (!cur) {
-        if (done) body += `<div class="btn-row"><button class="btn ghost" data-a="reopen" data-i="${i}">${t('a.addSet')}</button>${it.drops ? '' : `<button class="btn ghost" data-a="addDropsNow" data-i="${i}">${t('a.addDrops')}</button>`}</div>`;
+        if (done) body += `<button class="btn ghost mt" data-a="reopen" data-i="${i}">${t('a.addSet')}</button>`;
         else body += `<button class="btn primary" data-a="startEx" data-i="${i}">${t('a.startEx')}</button>`;
       } else body += phasePanel(it, i, ex);
     }
@@ -269,19 +286,20 @@
         <div class="btn-row"><button class="btn secondary" data-a="finishEx" data-i="${i}">${t('a.finish')}</button><button class="btn primary" data-a="startFirst" data-i="${i}">${t('a.startFirst')}</button></div>`;
     }
     if (it.phase === 'perform') {
-      const pred = E.predict(it, ex, s, it.weight);
+      const rest = restBefore(it, st().active.phaseStart);
+      const pred = E.predict(it, ex, s, it.weight, rest);
       return `${dropNote}<div class="panel p3" id="tour-rec">
           <div><label>${t('a.perform')}</label><div class="timer" data-tick="since"></div></div>
           <div><label>RIR</label><div class="big">${rirT}</div></div>${wBlock}
           <div><label>${t('a.set')}</label><div class="big">${k + 1}<small>/${it.sets}</small></div></div>
           <div><label>${t('c.reps')}</label><div class="big">${it.reps.join(' – ')}</div></div>
-          ${est ? `<div class="est"><label>${t('a.estReps')}</label><div class="big ${pred < it.reps[0] || pred > it.reps[1] ? 'warn' : ''}">${pred}</div></div>` : '<div></div>'}</div>
+          ${est ? `<div class="est"><label>${t('a.estReps')}</label><div class="big ${pred < it.reps[0] || pred > it.reps[1] ? 'warn' : ''}">${pred}</div>${rest != null ? `<small class="muted sub">${t('a.afterRest', { t: App.fmtClock(rest) })}</small>` : ''}</div>` : '<div></div>'}</div>
         <div class="btn-row"><button class="btn secondary" data-a="finishEx" data-i="${i}">${t('a.finish')}</button><button class="btn primary" id="tour-log" data-a="logSet" data-i="${i}">${t('a.logSet')}</button></div>`;
     }
     if (it.phase === 'log') return logForm(it, i, ex);
     if (it.phase === 'drops') return dropsForm(it, i, ex);
     if (it.phase === 'rest') {
-      const pred = E.predict(it, ex, s, it.weight);
+      const pred = estReps(st().active, it, Date.now());
       const partner = partnerOf(it);
       return `<div class="rest-big" id="tour-rest"><label data-tick="restLabel">${t('restNow')}</label>
           <div class="rest-row"><button class="round" data-a="restAdj" data-d="-15" aria-label="-15 s">−15</button><div class="timer xl" data-tick="rest"></div><button class="round" data-a="restAdj" data-d="15" aria-label="+15 s">+15</button></div></div>
@@ -289,7 +307,7 @@
           <div><label>${t('a.nextUp')}</label><div class="big">${k + 1}<small>/${it.sets}</small></div></div>
           <div><label>RIR</label><div class="big">${rirT}</div></div>${wBlock}
           <div><label>${t('c.reps')}</label><div class="big">${it.reps.join(' – ')}</div></div>
-          ${est ? `<div class="est"><label>${t('a.estReps')}</label><div class="big ${pred < it.reps[0] || pred > it.reps[1] ? 'warn' : ''}">${pred}</div></div>` : '<div></div>'}
+          ${est ? `<div class="est"><label>${t('a.estReps')}</label><div class="big ${pred < it.reps[0] || pred > it.reps[1] ? 'warn' : ''}" data-tick="est" data-i="${i}">${pred}</div></div>` : '<div></div>'}
           ${partner ? `<div><label>${t('superset')}</label><div class="muted small">${esc(App.exName(partner.exId))}</div></div>` : '<div></div>'}</div>
         <div class="btn-row"><button class="btn secondary" data-a="finishEx" data-i="${i}">${t('a.finish')}</button><button class="btn primary" data-a="nextSet" data-i="${i}">${t('a.nextSet')}</button></div>`;
     }
@@ -297,7 +315,7 @@
   }
   /** weights for the drops after the coming set ("22.5 kg → 17.5 kg"), or '' when that set is not the last one or has no drops */
   function dropPlan(it, ex) {
-    if (!it.drops || it.logged.length + 1 !== it.sets) return '';
+    if (!it.drops || it.dropsDone || it.logged.length + 1 !== it.sets) return '';
     return E.dropWeights(it, ex, st(), it.drops).map(w => App.fmtW(w, ex)).join(' → ');
   }
   const goMsg = it => { const w = it ? dropPlan(it, EX[it.exId]) : ''; return w ? t('goNowDrop', { w }) : t('goNow'); };
@@ -306,21 +324,24 @@
     const bands = (en.bands && en.bands.length) ? en.bands : DEFAULT_BANDS.map(b => ({ key: b[0], w: b[1] }));
     return `<div class="chips sel">${bands.map(b => `<button class="chip ${Math.abs(b.w - cur) < 1e-6 ? 'on' : ''}" data-a="${act}" data-w="${b.w}">${t('band.' + b.key)}</button>`).join('')}${ex.assist ? `<button class="chip ${cur <= 0 ? 'on' : ''}" data-a="${act}" data-w="0">${t('a.noAssist')}</button>` : ''}</div>`;
   }
-  function logForm(it, i, ex) {
-    const L = ui.log;
+  /** reps, RIR, weight and note fields of a set; `p` is the action prefix ('log' = new set, 'ed' = editing a recorded set) */
+  function setFields(ex, L, p) {
     const split = ex.uni && !S().prefs.logBothSides;
-    const plateable = ex.load === 'barbell' || plateMachine(ex);
     const u = App.unitsFor(ex);
     const stepper = (act, val, unit, extra = '') => `<div class="stepper"><button data-a="${act}" data-d="-1" ${extra}>${ICON.minus}</button><div class="val">${val} <small>${unit}</small></div><button data-a="${act}" data-d="1" ${extra}>${ICON.plus}</button></div>`;
     const bandMode = ex.load === 'band' || (ex.assist && !E.env(st()).equip.includes('assistMachine'));
-    return `<div class="logform" id="tour-logform"><h4>${t('a.logTitle')}</h4>
-      <label>${split ? t('a.repsL') : t('a.repsDone')}</label>${stepper('logR', L.reps, t('reps'), 'data-s="L"')}
-      ${split ? `<label>${t('a.repsR')}</label>${stepper('logR', L.repsR, t('reps'), 'data-s="R"')}` : ''}
-      <label>${t('a.rirQ')} <button class="help-btn" data-a="help" data-k="rir">${ICON.help}</button></label>${stepper('logRir', L.rir, 'RIR')}
-      ${bandMode ? `<label>${ex.assist ? t('a.whichBandAssist') : t('a.whichBand')}</label>${bandChips(ex, L.w, 'logBand')}`
-        : `<label>${ex.assist ? t('a.assist') : ex.load === 'bw' ? t('a.extraWeight') : t('c.weight')}</label>${stepper('logW', App.fmtNum(App.wVal(L.w, u)), App.unitLbl(u))}`}
+    const plateable = p === 'log' && (ex.load === 'barbell' || plateMachine(ex));
+    return `<label>${split ? t('a.repsL') : t('a.repsDone')}</label>${stepper(p + 'R', L.reps, t('reps'), 'data-s="L"')}
+      ${split ? `<label>${t('a.repsR')}</label>${stepper(p + 'R', L.repsR, t('reps'), 'data-s="R"')}` : ''}
+      <label>${t('a.rirQ')} <button class="help-btn" data-a="help" data-k="rir">${ICON.help}</button></label>${stepper(p + 'Rir', L.rir, 'RIR')}
+      ${bandMode ? `<label>${ex.assist ? t('a.whichBandAssist') : t('a.whichBand')}</label>${bandChips(ex, L.w, p + 'Band')}`
+        : `<label>${ex.assist ? t('a.assist') : ex.load === 'bw' ? t('a.extraWeight') : t('c.weight')}</label>${stepper(p + 'W', App.fmtNum(App.wVal(L.w, u)), App.unitLbl(u))}`}
       ${plateable ? `<button class="btn ghost inline" data-a="plateCalc">${t('pc.btn')}</button>` : ''}
-      <label class="mt">${t('a.notes')}</label><textarea class="inp notes" maxlength="2000" data-in="logNote" rows="2" placeholder="${t('a.notePh')}">${esc(L.note || '')}</textarea>
+      <label class="mt">${t('a.notes')}</label><textarea class="inp notes" maxlength="2000" data-in="${p}Note" rows="2" placeholder="${t('a.notePh')}">${esc(L.note || '')}</textarea>`;
+  }
+  function logForm(it, i, ex) {
+    return `<div class="logform" id="tour-logform"><h4>${t('a.logTitle')}</h4>
+      ${setFields(ex, ui.log, 'log')}
       <div class="btn-row"><button class="btn secondary" data-a="logCancel">${t('cancel')}</button><button class="btn primary" data-a="commitSet">${t('save')}</button></div></div>`;
   }
   function dropsForm(it, i, ex) {
@@ -430,7 +451,7 @@
         ${row('exNote', ICON.note, t('menu.note'), `data-id="${ex.id}"`)}
         ${row('fav', ICON.heart, fav ? t('menu.unfav') : t('menu.fav'), `data-id="${ex.id}"`)}
         ${it.ss ? row('removeSS', ICON.link, t('menu.removeSS')) : row('createSS', ICON.link, t('menu.createSS'))}
-        ${it.drops ? row('removeDrops', ICON.layers, t('menu.removeDrops')) : row('addDrops', ICON.layers, t('menu.addDrops'))}
+        ${active && it.status === 'done' ? (it.logged.length ? row('addDropsNow', ICON.layers, t('a.addDrops')) : '') : it.drops ? row('removeDrops', ICON.layers, t('menu.removeDrops')) : row('addDrops', ICON.layers, t('menu.addDrops'))}
         ${E.variantsFor(ex, st()).length ? row('pickVariant', ICON.building, t('menu.variant')) : ''}
         ${eqOpts.length > 1 ? row('changeEquip', ICON.sliders, t('menu.equip')) : ''}
         ${ex.load !== 'band' ? row('changeUnits', ICON.globe, t('menu.units') + ` (${App.unitLbl(pref.units || S().units)})`) : ''}
@@ -471,7 +492,7 @@
     const ex = EX[d.id];
     const rows = st().history.map(h => ({ h, it: h.items.find(x => x.exId === d.id && x.sets.length) })).filter(x => x.it).reverse();
     App.openSheet(() => `<div class="sheet-head"><h2>${esc(App.exName(d.id))}</h2><button class="icon-btn circ" data-a="closeSheet">${ICON.x}</button></div><p class="muted small-p">${t('menu.history')}</p>
-      ${rows.length ? rows.map(({ h, it }) => `<div class="hist-ex"><b>${App.fmtDate(h.date)}</b> <small class="muted">${esc(h.envName || '')}${it.variant ? ' · ' + esc(it.variant) : ''}</small><div class="muted">${it.sets.map(x => `${App.fmtW(x.w, ex)}×${x.repsR != null ? x.repsL + '/' + x.repsR : x.reps} @${x.rir}`).join(' · ')}</div>${it.note ? `<div class="exnote">${ICON.note} ${esc(it.note)}</div>` : ''}</div>`).join('') : `<p class="muted">${t('st.noRecord')}</p>`}
+      ${rows.length ? rows.map(({ h, it }) => `<div class="hist-ex"><b>${App.fmtDate(h.date)}</b> <small class="muted">${esc(h.envName || '')}${it.variant ? ' · ' + esc(it.variant) : ''}</small><div class="muted">${it.sets.map(x => `${App.fmtW(x.w, ex)}×${x.repsR != null ? x.repsL + '/' + x.repsR : x.reps} @${x.rir}${prMark(x)}`).join(' · ')}</div>${it.note ? `<div class="exnote">${ICON.note} ${esc(it.note)}</div>` : ''}</div>`).join('') : `<p class="muted">${t('st.noRecord')}</p>`}
       <button class="btn secondary mt" data-a="exChart" data-id="${d.id}">${t('menu.chart')}</button>`);
   };
   A.exChart = d => { App.closeSheet(); ui.statsEx = d.id; ui.pages = []; ui.tab = 'stats'; App.render(); };
@@ -490,9 +511,9 @@
     recalc(list); App.save(); App.closeSheet(); App.render();
   };
   A.removeSS = d => { const list = listRef(); const ss = list[+d.i].ss; list.forEach(x => { if (x.ss === ss) delete x.ss; }); recalc(list); App.save(); App.closeSheet(); App.render(); };
-  A.addDrops = d => { const list = listRef(); list[+d.i].drops = 2; recalc(list); App.save(); App.closeSheet(); App.render(); };
+  A.addDrops = d => { const list = listRef(); list[+d.i].drops = 2; delete list[+d.i].dropsDone; recalc(list); App.save(); App.closeSheet(); App.render(); };
   A.removeDrops = d => { const list = listRef(); list[+d.i].drops = 0; recalc(list); App.save(); App.closeSheet(); App.render(); };
-  A.addDropsNow = d => { const a = st().active; const it = a.items[+d.i]; it.drops = 2; setCurrent(+d.i); it.phase = 'drops'; ui.drops = { i: +d.i, list: E.dropWeights(it, EX[it.exId], st(), 2).map(w => ({ w, reps: 0 })) }; App.save(); App.render(); };
+  A.addDropsNow = d => { App.closeSheet(); const a = st().active; const it = a.items[+d.i]; it.drops = 2; it.dropsDone = true; setCurrent(+d.i); it.phase = 'drops'; ui.drops = { i: +d.i, list: E.dropWeights(it, EX[it.exId], st(), 2).map(w => ({ w, reps: 0 })) }; App.save(); App.render(); };
   A.changeEquip = d => {
     const it = listRef()[+d.i]; const ex = EX[it.exId];
     const cur = E.exPref(st(), ex.id).equip || E.primaryEquip(ex, E.env(st()));
@@ -633,6 +654,7 @@
     ui.expanded = -1; ui.focus = !!S().prefs.fullscreen;
     App.save(); App.requestWakeLock(); App.requestNotifications(); App.render(); window.scrollTo({ top: 0 });
     setTimeout(() => App.startTour('workout', [
+      { sel: '#tour-dur', title: t('tour.dur.t'), text: t('tour.dur') },
       { sel: '#tour-end', title: t('tour.end.t'), text: t('tour.end') },
       { sel: '#ex-0', title: t('tour.card.t'), text: t('tour.card') },
       { sel: '#tour-startex', title: t('tour.start.t'), text: t('tour.start') },
@@ -650,16 +672,46 @@
   A.wStep = d => { const it = st().active.items[+d.i]; it.weight = E.stepW(it.weight, EX[it.exId], st(), +d.d); App.save(); App.keepScroll(App.render); };
   A.logSet = d => {
     const a = st().active; const i = +d.i; const it = a.items[i]; const ex = EX[it.exId];
-    const pred = Math.max(1, E.predict(it, ex, S(), it.weight));
+    const pred = Math.max(1, E.predict(it, ex, S(), it.weight, restBefore(it, a.phaseStart)));
     ui.log = { i, k: -1, w: it.weight, reps: pred, repsR: pred, rir: E.rirTarget(it, it.logged.length), note: '', backPhase: it.phase };
     it.phase = 'log'; App.save(); App.keepScroll(App.render);
     setTimeout(() => App.startTour('workoutForm', [{ sel: '#tour-logform', title: t('tour.form.t'), text: t('tour.form') }]), 200);
   };
+  /* Editing a recorded set happens in its own sheet. The workout carries on untouched (current exercise, phase and
+     timers stay as they are) and saving an edit triggers no follow-up prompts such as drop sets or quick tips. */
   A.editSet = d => {
-    const a = st().active; const i = +d.i, k = +d.k; const it = a.items[i]; const l = it.logged[k];
-    if (i !== a.cur) setCurrent(i);
-    ui.log = { i, k, w: l.w, reps: l.repsL != null ? l.repsL : l.reps, repsR: l.repsR != null ? l.repsR : l.reps, rir: l.rir, note: l.note || '', backPhase: it.phase };
-    it.status = 'active'; it.phase = 'log'; App.keepScroll(App.render);
+    const a = st().active; const i = +d.i, k = +d.k; const l = a && a.items[i] && a.items[i].logged[k];
+    if (!l) return;
+    ui.edit = { i, k, w: l.w, reps: l.repsL != null ? l.repsL : l.reps, repsR: l.repsR != null ? l.repsR : l.reps, rir: l.rir, note: l.note || '' };
+    App.openSheet(editSheet);
+  };
+  function editSheet() {
+    const ed = ui.edit; const it = st().active.items[ed.i]; const ex = EX[it.exId];
+    return `<div class="sheet-head"><h2>${t('a.editTitle', { n: ed.k + 1 })}</h2><button class="icon-btn circ" data-a="closeSheet">${ICON.x}</button></div>
+      <p class="muted small-p">${esc(App.exName(ex.id))}</p>
+      ${setFields(ex, ed, 'ed')}
+      <div class="btn-row"><button class="btn secondary" data-a="closeSheet">${t('cancel')}</button><button class="btn primary" data-a="edSave">${t('save')}</button></div>`;
+  }
+  A.edR = (d, el) => { const key = el.dataset.s === 'R' ? 'repsR' : 'reps'; ui.edit[key] = Math.max(0, ui.edit[key] + (+d.d)); App.refreshSheet(); };
+  A.edRir = d => { ui.edit.rir = Math.max(0, Math.min(10, ui.edit.rir + (+d.d))); App.refreshSheet(); };
+  A.edW = d => { const it = st().active.items[ui.edit.i]; ui.edit.w = E.stepW(ui.edit.w, EX[it.exId], st(), +d.d); App.refreshSheet(); };
+  A.edBand = d => { ui.edit.w = +d.w; App.refreshSheet(); };
+  A.edNote = (d, el) => { ui.edit.note = el.value; };
+  A.edSave = () => {
+    const a = st().active; const ed = ui.edit;
+    ui.edit = null; App.closeSheet();
+    if (!a || !ed) return;
+    const it = a.items[ed.i]; const ex = EX[it.exId]; const l = it.logged[ed.k];
+    if (!l) return;
+    const split = ex.uni && !S().prefs.logBothSides;
+    const weightChanged = Math.abs(l.w - ed.w) > 1e-9;
+    l.w = ed.w; l.rir = ed.rir;
+    if (split) { l.repsL = ed.reps; l.repsR = ed.repsR; l.reps = Math.min(ed.reps, ed.repsR); } else { l.reps = ed.reps; delete l.repsL; delete l.repsR; }
+    if (ed.note) l.note = ed.note; else delete l.note;
+    if (weightChanged && ed.k === it.logged.length - 1 && it.status !== 'done') it.weight = ed.w;
+    const rec = markRecords(ed.i, ed.k);
+    App.save(); App.keepScroll(App.render);
+    if (rec) announcePR(ex, rec);
   };
   A.logR = (d, el) => { const key = el.dataset.s === 'R' ? 'repsR' : 'reps'; ui.log[key] = Math.max(0, ui.log[key] + (+d.d)); App.keepScroll(App.render); };
   A.logRir = d => { ui.log.rir = Math.max(0, Math.min(10, ui.log.rir + (+d.d))); App.keepScroll(App.render); };
@@ -668,8 +720,7 @@
   A.logNote = (d, el) => { ui.log.note = el.value; };
   A.logCancel = () => {
     const it = st().active.items[ui.log.i];
-    it.phase = ui.log.backPhase === 'log' ? 'perform' : (ui.log.backPhase || 'perform');
-    if (it.logged.length >= it.sets && ui.log.k >= 0) it.status = 'done';
+    it.phase = 'perform';
     ui.log = null; App.save(); App.keepScroll(App.render);
   };
   A.commitSet = async () => {
@@ -678,17 +729,13 @@
     const entry = { w: L.w, reps: split ? Math.min(L.reps, L.repsR) : L.reps, rir: L.rir, t: Date.now() };
     if (split) { entry.repsL = L.reps; entry.repsR = L.repsR; }
     if (L.note) entry.note = L.note;
-    const editing = L.k >= 0;
-    if (editing) it.logged[L.k] = Object.assign(it.logged[L.k], entry); else it.logged.push(entry);
+    it.logged.push(entry);
     it.weight = L.w; ui.log = null;
-    if (editing) {
-      if (it.logged.length >= it.sets) { it.status = 'done'; it.phase = 'done'; const nx = a.items.findIndex(x => x.status === 'pending'); if (nx >= 0 && a.cur === L.i) setCurrent(nx); }
-      else it.phase = L.backPhase === 'log' ? 'rest' : L.backPhase;
-      App.save(); App.keepScroll(App.render); return;
-    }
+    const rec = markRecords(L.i, it.logged.length - 1);
+    if (rec) announcePR(ex, rec);
     const last = it.logged.length >= it.sets;
-    if (last && it.drops) {
-      it.phase = 'drops'; ui.drops = { i: L.i, list: E.dropWeights(it, ex, st(), it.drops).map(w => ({ w, reps: 0 })) };
+    if (last && it.drops && !it.dropsDone) {
+      it.phase = 'drops'; it.dropsDone = true; ui.drops = { i: L.i, list: E.dropWeights(it, ex, st(), it.drops).map(w => ({ w, reps: 0 })) };
       App.save(); App.keepScroll(App.render); return;
     }
     if (last) { completeExercise(L.i); App.save(); App.render(); return; }
@@ -696,7 +743,7 @@
     App.save(); App.keepScroll(App.render);
     setTimeout(() => App.startTour('workoutRest', [{ sel: '#tour-rest', title: t('tour.rest.t'), text: t('tour.rest') }]), 200);
     if (!S().prefs.suggestions) return;
-    const sg = E.suggestion(it, ex, st());
+    const sg = E.suggestion(it, ex, st(), it.phase === 'rest' && a.restEnd ? (a.restEnd - entry.t) / 1000 : undefined);
     if (!sg) return;
     const msg = t('sg.' + sg.type, { w: sg.w != null ? App.fmtW(sg.w, ex) : '', lo: it.reps[0], hi: it.reps[1], p: sg.newPred });
     if (sg.type === 'tough') { App.notice(t('sg.title'), msg); return; }
@@ -705,6 +752,27 @@
     if (v === 'never') S().prefs.suggestions = false;
     App.save(); App.keepScroll(App.render);
   };
+  /** re-evaluate the record flags of one exercise in this workout; returns the record of set k when it has just become one */
+  function markRecords(i, k) {
+    const it = st().active.items[i]; const ex = EX[it.exId];
+    const was = it.logged[k] && it.logged[k].pr;
+    const recs = E.setRecords(ex, it.logged, st(), it.variant, S().bodyweight);
+    it.logged.forEach((l, n) => { if (recs[n]) l.pr = recs[n].type; else delete l.pr; });
+    return recs[k] && !was ? recs[k] : null;
+  }
+  /** record notice right after the set is saved: sound, vibration and a banner that does not interrupt the workout */
+  function announcePR(ex, r) {
+    if (!S().prefs.prNotifications) return;
+    const rel = r.type === 'rel';
+    const u = App.unitsFor(ex);
+    const kg = v => `${App.fmtNum(Math.round(App.wVal(v, u) * 2) / 2)} ${App.unitLbl(u)}`;
+    const ratio = v => App.fmtNum(Math.round(v * 100) / 100);
+    const plainLoad = !ex.bw && !ex.assist && ex.load !== 'band';
+    const detail = rel ? t('pr.relDetail', { r: ratio(r.rel), p: ratio(r.prevRel) }) : plainLoad ? t('pr.e1Detail', { w: kg(r.e1), p: kg(r.prevE1) }) : '';
+    const title = t(rel ? 'pr.relTitle' : 'pr.title');
+    App.alertUser(`${title} ${App.exName(ex.id)}`, 'pr');
+    App.toast(`<span class="toast-ic">${ICON.trophy}</span><span class="toast-txt"><b>${title}</b><span>${esc(App.exName(ex.id))} — ${t('pr.' + r.type)}</span>${detail ? `<small>${detail}</small>` : ''}</span>`, 'pr');
+  }
   /** after a working set (not the last): rest, or switch to the superset partner */
   function afterSet(i) {
     const a = st().active; const it = a.items[i];
@@ -744,7 +812,7 @@
     if (it.logged.length < it.sets && !(await App.confirmDlg(t('a.finishT'), t('a.finishQ'), t('a.finish')))) return;
     completeExercise(+d.i); App.save(); App.render();
   };
-  A.reopen = d => { const i = +d.i; const it = st().active.items[i]; it.sets = Math.max(it.sets, it.logged.length + 1); setCurrent(i); it.phase = 'perform'; st().active.phaseStart = Date.now(); App.save(); App.render(); };
+  A.reopen = d => { const i = +d.i; const it = st().active.items[i]; it.sets = Math.max(it.sets, it.logged.length + 1); it.dropsDone = true; setCurrent(i); it.phase = 'perform'; st().active.phaseStart = Date.now(); App.save(); App.render(); };
   A.pauseToggle = () => {
     const a = st().active; const now = Date.now();
     if (a.pausedAt) { const d = now - a.pausedAt; a.pausedTotal = (a.pausedTotal || 0) + d; ['restEnd', 'warmEnd', 'phaseStart'].forEach(k => { if (a[k]) a[k] += d; }); a.pausedAt = null; }
@@ -765,27 +833,27 @@
   async function finishSession() {
     const a = st().active; const s = S();
     const items = a.items.filter(it => it.logged.length).map(it => ({ exId: it.exId, variant: it.variant || null, ss: it.ss || null, note: noteFor(it.exId) || undefined,
-      sets: it.logged.map(l => { const o = { w: l.w, reps: l.reps, rir: l.rir }; if (l.repsR != null) { o.repsL = l.repsL; o.repsR = l.repsR; } if (l.note) o.note = l.note; if (l.drops && l.drops.length) o.drops = l.drops; return o; }) }));
+      sets: it.logged.map(l => { const o = { w: l.w, reps: l.reps, rir: l.rir }; if (l.repsR != null) { o.repsL = l.repsL; o.repsR = l.repsR; } if (l.note) o.note = l.note; if (l.drops && l.drops.length) o.drops = l.drops; if (l.pr) o.pr = l.pr; return o; }) }));
     if (!items.length) { if (await App.confirmDlg(t('a.end'), t('a.discard'), t('a.discardBtn'), 'danger')) { st().active = null; ui.focus = false; App.save(); App.releaseWakeLock(); App.render(); } return; }
     // difficulty rating
     ui.diff = 5;
     const rated = await App.dialog({ title: t('fb.diffT'), body: `<p>${t('fb.diff')}</p><div class="diff"><input class="range" type="range" min="0" max="10" step="1" value="5" data-in="diffLive"><div class="row-between"><small>0 · ${t('fb.easy')}</small><b id="diffVal">5</b><small>10 · ${t('fb.hard')}</small></div></div>`, cancel: false, buttons: [{ label: t('save'), v: 'ok', cls: 'primary' }, { label: t('skip'), v: 'skip' }] });
     const difficulty = rated === 'ok' ? ui.diff : null;
     const prs = [];
-    items.forEach(it => { const ex = EX[it.exId]; const r = E.recordCheck(ex, it.sets, st().history, s.bodyweight); if (r) prs.push({ exId: it.exId, type: r.type }); });
+    items.forEach(it => { const ex = EX[it.exId]; const r = E.recordCheck(ex, it.sets, st(), it.variant, s.bodyweight); if (r) prs.push({ exId: it.exId, type: r.type }); });
     const end = Date.now();
     const nSets = items.reduce((x, i) => x + i.sets.length, 0);
     const min = Math.round((end - a.start - (a.pausedTotal || 0)) / 60000);
-    st().history.push({ id: a.id, date: a.start, end, wid: a.wid, wname: a.wname, envId: a.envId, envName: a.envName, budgetMin: a.budgetMin, items, prs, difficulty, deload: a.deload, paused: a.pausedTotal || 0 });
+    st().history.push({ id: a.id, date: a.start, end, wid: a.wid, wname: a.wname, envId: a.envId, envName: a.envName, budgetMin: a.budgetMin, items, prs, bw: s.bodyweight, difficulty, deload: a.deload, paused: a.pausedTotal || 0 });
     if (a.deload && !st().firstDeloadDone) { st().firstDeloadDone = true; st().lastDeloadAt = a.start; }
     const r = E.routine(st()); const idx = r.findIndex(w => w.id === a.wid);
     E.setRot(st(), idx >= 0 ? idx + 1 : E.rotOf(st()) + 1);          // still inside the workout's own week here
     st().active = null; st().draft = null; st().todayMin = null; st().nextAt = null; st().ssOffAt = null; ui.log = null; ui.focus = false;
     App.save(); App.releaseWakeLock();
     ui.pages = []; ui.tab = 'home'; App.render();
-    if (prs.length && s.prefs.prNotifications) { App.alertUser(t('pr.title'), 'pr'); await App.dialog({ title: t('pr.title'), cls: 'pr-dlg', body: `<p>${t('pr.text')}</p><ul class="notes">${prs.map(p => `<li><b>${esc(App.exName(p.exId))}</b> — ${t('pr.' + p.type)}</li>`).join('')}</ul>`, buttons: [{ label: t('gotIt'), v: 'ok', cls: 'primary' }] }); }
+    const recHtml = prs.length ? `<h4 class="pr-h">${ICON.trophy}<span>${t('pr.text')}</span></h4><ul class="notes">${prs.map(p => `<li><b>${esc(App.exName(p.exId))}</b> — ${t('pr.' + p.type)}</li>`).join('')}</ul>` : `<p>${t('sum.noPr')}</p>`;
     await App.dialog({ title: t('sum.title'), body: `<div class="grid3 sum"><div><label>${t('sum.time')}</label><div class="big">${min}<small>min</small></div></div><div><label>${t('st.sets')}</label><div class="big">${nSets}</div></div><div><label>${t('sum.kcal')}</label><div class="big">${E.kcal(min, s.bodyweight)}</div></div></div>
-        <p>${t('sum.noPr')}</p><p class="hint">${t('sum.next', { d: esc(App.workoutName(E.currentWorkout(st()) || r[0])) })}</p>`, buttons: [{ label: t('close'), v: 'ok', cls: 'primary' }] });
+        ${recHtml}<p class="hint">${t('sum.next', { d: esc(App.workoutName(E.currentWorkout(st()) || r[0])) })}</p>`, buttons: [{ label: t('close'), v: 'ok', cls: 'primary' }] });
     const inj = await App.dialog({ title: t('inj.wasT'), body: `<p>${t('inj.was')}</p>`, buttons: [{ label: t('no'), v: 'no', cls: 'primary' }, { label: t('inj.update'), v: 'yes' }] });
     if (inj === 'yes') App.go('injuries');
   }
@@ -849,6 +917,7 @@
       else if (k === 'rest') { if (a.restEnd == null) { el.textContent = '00:00'; return; } const r = (a.restEnd - eff) / 1000; el.textContent = App.signedClock(r); el.classList.toggle('over', r < 0); }
       else if (k === 'restLabel') el.textContent = a.restEnd && a.restEnd > eff ? t('restNow') : t('goNow');
       else if (k === 'endAt') { const end = predictedEnd(a, eff); el.textContent = App.fmtTime(end); el.classList.toggle('late', end > a.start + a.budgetMin * 60000 + 60000); }
+      else if (k === 'est') { const it = a.items[+el.dataset.i]; if (!it || it.phase !== 'rest') return; const p = estReps(a, it, now); el.textContent = p; el.classList.toggle('warn', p < it.reps[0] || p > it.reps[1]); }
     });
     const cur = a && a.cur >= 0 && !a.pausedAt ? a.items[a.cur] : null;
     if (cur && cur.phase === 'rest' && a.restEnd && !a.beeped) App.scheduleTimerAlert(a.restEnd, goMsg(cur));

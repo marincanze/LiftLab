@@ -70,7 +70,8 @@ const App = (() => {
     gift: svg('<rect x="3" y="8" width="18" height="13" rx="2"/><path d="M12 8v13M3 13h18M12 8c-2-4-6-4-6-1s4 1 6 1c2 0 6 2 6-1s-4-3-6 1z"/>'),
     bell: svg('<path d="M6 16V11a6 6 0 0 1 12 0v5l2 2H4z"/><path d="M10 20a2 2 0 0 0 4 0"/>'),
     layers: svg('<path d="M12 3l9 5-9 5-9-5z"/><path d="M3 13l9 5 9-5M3 17l9 5 9-5"/>'),
-    bolt: svg('<path d="M13 2L4 14h7l-1 8 9-12h-7z"/>', 18)
+    bolt: svg('<path d="M13 2L4 14h7l-1 8 9-12h-7z"/>', 18),
+    trophy: svg('<path d="M8 21h8M12 17v4"/><path d="M7 4h10v5a5 5 0 0 1-10 0z"/><path d="M17 6h3v1.5A3.5 3.5 0 0 1 16.5 11M7 6H4v1.5A3.5 3.5 0 0 0 7.5 11"/>', 18)
   };
   const LOGO = `<svg viewBox="0 0 40 40" width="30" height="30" aria-hidden="true"><rect x="2" y="2" width="36" height="36" rx="10" fill="var(--acc)"/><path d="M11 27V13h3v11h6v3zM22 27l5-14h3l-5 14z" fill="#fff"/></svg>`;
   const brand = () => `<div class="brand">${LOGO}<span>LiftLab</span></div>`;
@@ -345,6 +346,25 @@ const App = (() => {
     const sw = 'serviceWorker' in navigator && navigator.serviceWorker.controller;
     if (sw) sw.postMessage(want ? { type: 'timer', at: want, body: msg } : { type: 'timer-cancel' });
   }
+  /** short banner at the top of the screen that does not block the workout; tap to close */
+  let toastTimer = null;
+  function toast(html, cls = '', ms = 6000) {
+    let el = document.getElementById('toast');
+    if (!el) {
+      el = document.createElement('div'); el.id = 'toast'; el.setAttribute('role', 'status'); el.setAttribute('aria-live', 'polite');
+      el.addEventListener('click', hideToast);
+      document.body.appendChild(el);
+    }
+    el.className = 'toast ' + cls; el.innerHTML = html; el.hidden = false;
+    void el.offsetWidth;   // apply the hidden position first so the slide-in transition runs
+    el.classList.add('show');
+    clearTimeout(toastTimer); toastTimer = setTimeout(hideToast, ms);
+  }
+  function hideToast() {
+    const el = document.getElementById('toast'); if (!el) return;
+    clearTimeout(toastTimer); el.classList.remove('show');
+    setTimeout(() => { if (!el.classList.contains('show')) el.hidden = true; }, 300);
+  }
   function requestNotifications() {
     if ('Notification' in window && Notification.permission === 'default') { try { Notification.requestPermission(); } catch (e) { /* ignore */ } }
   }
@@ -458,6 +478,6 @@ const App = (() => {
     exName, mName, eqName, workoutName, fmtNum, unitsFor, unitLbl, unitW, lbMode, wVal, kgFrom, fmtW, bandFor, fmtBW, fmtH, fmtClock, signedClock, fmtHM, rirStr, fmtDate, fmtDateLong, fmtTime, ytUrl,
     chip, seg, yesNo, radios, hint, q, toggleRow, pageHead, menuRow, getPath, setPath, parseV, keepScroll,
     go, back, render, applyTheme, openSheet, refreshSheet, closeSheet, dialog, closeDialog, confirmDlg, notice, numberSheet, textSheet,
-    startTour, beep, alertUser, notify, scheduleTimerAlert, requestNotifications, requestWakeLock, releaseWakeLock, tickers, tick
+    startTour, beep, alertUser, notify, scheduleTimerAlert, toast, hideToast, requestNotifications, requestWakeLock, releaseWakeLock, tickers, tick
   };
 })();

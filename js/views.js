@@ -113,10 +113,26 @@
   };
 
   A.seeWhatsNew = () => { S().whatsNewSeen = RELEASE_NOTES[0].v; App.save(); App.go('whatsNew'); };
+  /** store a body weight measurement: one entry per day, a later one on the same day replaces it */
+  App.logBW = kg => {
+    if (!(kg > 0)) return;
+    const now = Date.now(); const log = st().bwLog;
+    const k = log.findIndex(b => E.dayStart(b.date) === E.dayStart(now));
+    if (k >= 0) log[k] = { date: now, kg }; else log.push({ date: now, kg });
+    log.sort((x, y) => x.date - y.date);
+    S().bodyweight = kg; st().draft = null; App.save();
+  };
+  /** when body weight was last logged, for the body weight cards */
+  App.bwWhen = () => {
+    const b = st().bwLog.reduce((a, x) => (!a || x.date > a.date ? x : a), null);
+    if (!b) return t('bw.never');
+    return E.dayStart(b.date) === E.dayStart(Date.now()) ? t('bw.today') : t('bw.on', { d: App.fmtDate(b.date) });
+  };
   A.editBW = () => {
     const lb = App.lbMode();
-    App.numberSheet({ title: t('home.weight'), value: lb ? Math.round(S().bodyweight * E.LB * 10) / 10 : S().bodyweight, step: lb ? 0.5 : 0.1, min: 30, max: 400, unit: App.unitW(),
-      onSave: v => { const kg = App.kgFrom(v); S().bodyweight = kg; st().bwLog.push({ date: Date.now(), kg }); st().draft = null; App.save(); App.render(); } });
+    App.numberSheet({ title: t('bw.title'), value: lb ? Math.round(S().bodyweight * E.LB * 10) / 10 : S().bodyweight, step: lb ? 0.5 : 0.1, min: lb ? 66 : 30, max: lb ? 880 : 400, unit: App.unitW(),
+      extra: `<p class="muted small-p center">${App.bwWhen()}</p>${App.hint(t('bw.hint'))}`,
+      onSave: v => { App.logBW(App.kgFrom(v)); App.render(); } });
   };
   A.afterRender = () => {
     if (!S().onboarded || ui.pages.length || st().active) return;
@@ -256,12 +272,13 @@
   function histCard(h) {
     const min = Math.round((h.end - h.date - (h.paused || 0)) / 60000);
     const nSets = h.items.reduce((a, i) => a + i.sets.length, 0);
-    const vol = h.items.reduce((a, i) => a + i.sets.reduce((b, x) => b + E.load(EX[i.exId] || { bw: 0 }, x.w, S().bodyweight) * x.reps, 0), 0);
+    const hbw = E.histBW(st(), h);
+    const vol = h.items.reduce((a, i) => a + i.sets.reduce((b, x) => b + E.load(EX[i.exId] || { bw: 0 }, x.w, hbw) * x.reps, 0), 0);
     return `<div class="card">
       <div class="row-between"><div><b class="title-md">${esc(h.wname || '')}</b><div class="muted small">${App.fmtTime(h.date)} – ${App.fmtTime(h.end)} · ${min} min · ${esc(h.envName || '')}${h.deload ? ' · ' + t('home.deloading') : ''}</div></div><button class="icon-btn" data-a="delHist" data-id="${h.id}">${ICON.trash}</button></div>
       <div class="grid3 mini mt"><div><div class="big">${nSets}</div><small class="muted">${t('st.sets')}</small></div><div><div class="big">${App.fmtNum(Math.round(App.wVal(vol) / 100) / 10)}<small>t</small></div><small class="muted">${t('st.tonnage')}</small></div><div><div class="big">${h.difficulty ?? '—'}</div><small class="muted">${t('st.difficulty')}</small></div></div>
       ${(h.prs || []).length ? `<p class="acc small"><b>${t('home.prs')}:</b> ${h.prs.map(p => esc(App.exName(p.exId))).join(', ')}</p>` : ''}
-      ${h.items.map(it => `<div class="hist-ex"><b>${esc(App.exName(it.exId))}</b>${it.variant ? ` <small class="muted">(${esc(it.variant)})</small>` : ''}${it.ss ? ` <small class="acc">${t('superset')}</small>` : ''}<div class="muted">${it.sets.map(x => `${App.fmtW(x.w, EX[it.exId])}×${x.repsR != null ? x.repsL + '/' + x.repsR : x.reps} @${x.rir}${x.drops ? ` (+${x.drops.length} ${t('drops')})` : ''}`).join(' · ')}</div>${it.note ? `<div class="exnote">${ICON.note} ${esc(it.note)}</div>` : ''}</div>`).join('')}
+      ${h.items.map(it => `<div class="hist-ex"><b>${esc(App.exName(it.exId))}</b>${it.variant ? ` <small class="muted">(${esc(it.variant)})</small>` : ''}${it.ss ? ` <small class="acc">${t('superset')}</small>` : ''}<div class="muted">${it.sets.map(x => `${App.fmtW(x.w, EX[it.exId])}×${x.repsR != null ? x.repsL + '/' + x.repsR : x.reps} @${x.rir}${x.drops ? ` (+${x.drops.length} ${t('drops')})` : ''}${App.prMark(x)}`).join(' · ')}</div>${it.note ? `<div class="exnote">${ICON.note} ${esc(it.note)}</div>` : ''}</div>`).join('')}
     </div>`;
   }
   App.histCard = histCard;

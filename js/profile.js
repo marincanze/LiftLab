@@ -129,7 +129,7 @@
   };
   A.setName = (d, el) => { S().name = el.value; App.save(); };
   A.setBirth = (d, el) => { S().birthYear = el.value ? Number(el.value) : null; App.save(); };
-  A.setBW = (d, el) => { const v = Number(String(el.value).replace(',', '.')); if (v > 20) { S().bodyweight = App.kgFrom(v); st().bwLog.push({ date: Date.now(), kg: S().bodyweight }); dirty(); App.save(); } };
+  A.setBW = (d, el) => { const v = Number(String(el.value).replace(',', '.')); if (v > 20) { App.logBW(App.kgFrom(v)); dirty(); App.save(); } };
   A.setHeight = (d, el) => { const v = Number(String(el.value).replace(',', '.')); if (v > 50) { S().height = S().lengthUnits === 'in' ? v * 2.54 : v; App.save(); } };
 
   STEP.experience = () => {

@@ -9,6 +9,16 @@ const Engine = (() => {
   const DAY = 864e5;
   const clamp = (v, a, b) => Math.max(a, Math.min(b, v));
   const uid = () => Math.random().toString(36).slice(2, 9);
+  /* Recovery between sets. The strength lost before the next set shrinks with rest time: a fast part
+     (phosphocreatine and metabolite recovery, time constant ~100 s) plus a small part that does not recover
+     within a workout. Scaled so that resting exactly the prescribed time gives FATIGUE: starting the next set
+     earlier costs more, waiting longer after the timer costs less. */
+  const REST_TAU = 100;
+  const restShape = sec => 0.06 + Math.exp(-Math.max(0, sec) / REST_TAU);
+  function fatigueFor(restSec, refSec) {
+    if (!(restSec >= 0) || !(refSec > 0)) return FATIGUE;
+    return clamp(FATIGUE * restShape(restSec) / restShape(refSec), 0.004, 0.08);
+  }
 
   // ================= ROUTINE =================
   function recommendedType(s, days) {
@@ -826,35 +836,51 @@ const Engine = (() => {
     if (n) { const l = item.logged[n - 1]; return e1rm(load(ex, l.w, s.bodyweight), l.reps, l.rir) * (1 - FATIGUE); }
     return item.e1;
   }
-  const predict = (item, ex, s, w) => repsAt(liveE1(item, ex, s), load(ex, w, s.bodyweight), rirTarget(item, item.logged.length));
-  /** quick tip after a logged set */
-  function suggestion(item, ex, st) {
+  /** reps for the next set from the last set's e1RM; `restSec` is measured from the start of the rest timer.
+   *  Starting when the prescribed rest is over gives the usual
+   *  (conservative, rounded down) estimate; resting longer or shorter shifts it by the rounded number of reps
+   *  that the extra recovery or fatigue is worth. */
+  function repsNext(e1Last, L, rir, restSec, refSec) {
+    const base = repsAt(e1Last * (1 - FATIGUE), L, rir);
+    if (restSec == null || !(refSec > 0) || !(L > 0)) return base;
+    return Math.max(0, base + Math.round(30 * e1Last * (FATIGUE - fatigueFor(restSec, refSec)) / L));
+  }
+  function predict(item, ex, s, w, restSec) {
+    const L = load(ex, w, s.bodyweight); const rir = rirTarget(item, item.logged.length);
+    const l = item.logged[item.logged.length - 1];
+    if (!l) return repsAt(item.e1, L, rir);
+    return repsNext(e1rm(load(ex, l.w, s.bodyweight), l.reps, l.rir), L, rir, restSec, item.rest);
+  }
+  /** quick tip after a logged set; `restSec` = the rest planned before the next set */
+  function suggestion(item, ex, st, restSec) {
     const s = st.settings;
     const k = item.logged.length;
     if (k >= item.sets || k === 0) return null;
     const last = item.logged[k - 1];
-    const E = e1rm(load(ex, last.w, s.bodyweight), last.reps, last.rir) * (1 - FATIGUE);
+    const e1Last = e1rm(load(ex, last.w, s.bodyweight), last.reps, last.rir);
+    const E = e1Last * (1 - fatigueFor(restSec, item.rest));
     const rirN = rirTarget(item, k);
     const w = item.weight;
-    const pred = repsAt(E, load(ex, w, s.bodyweight), rirN);
+    const next = x => repsNext(e1Last, load(ex, x, s.bodyweight), rirN, restSec, item.rest);
+    const pred = next(w);
     const [lo, hi] = item.reps;
     const targetRir = rirTarget(item, k - 1);
     if (last.rir >= targetRir + 3 && last.reps >= lo) {
       let nw = bestWeight(E, item, ex, st, rirN);
       if (nw === w) nw = stepW(w, ex, st, ex.assist ? -1 : 1);
-      return { type: 'rirHigh', w: nw, newPred: repsAt(E, load(ex, nw, s.bodyweight), rirN) };
+      return { type: 'rirHigh', w: nw, newPred: next(nw) };
     }
     if (pred > hi) {
       let nw = bestWeight(E, item, ex, st, rirN);
       if (ex.assist ? nw >= w - 1e-6 : nw <= w + 1e-6) nw = stepW(w, ex, st, ex.assist ? -1 : 1);
       if (nw === w) return null;
-      return { type: 'more', w: nw, newPred: repsAt(E, load(ex, nw, s.bodyweight), rirN) };
+      return { type: 'more', w: nw, newPred: next(nw) };
     }
     if (pred < lo) {
       let nw = bestWeight(E, item, ex, st, rirN);
       if (ex.assist ? nw <= w + 1e-6 : nw >= w - 1e-6) nw = stepW(w, ex, st, ex.assist ? 1 : -1);
       if (nw === w) return { type: 'tough', w: null, newPred: pred };
-      return { type: 'less', w: nw, newPred: repsAt(E, load(ex, nw, s.bodyweight), rirN) };
+      return { type: 'less', w: nw, newPred: next(nw) };
     }
     return null;
   }
@@ -890,18 +916,58 @@ const Engine = (() => {
   const kcal = (minutes, bw) => Math.round(5 * 3.5 * bw / 200 * minutes);
 
   // ================= RECORDS & SCORES =================
-  function recordCheck(ex, sets, history, bw) {
-    const prev = history.map(h => h.items.find(i => i.exId === ex.id && i.sets.length)).filter(Boolean);
-    if (!prev.length) return null;
-    const allPrev = prev.flatMap(p => p.sets);
-    const bestE1 = Math.max(...prev.map(p => bestNormE1(ex, p.sets, bw)));
-    const nowE1 = bestNormE1(ex, sets, bw);
-    if (nowE1 <= bestE1 * 1.005) return null;
-    const maxW = Math.max(...allPrev.map(x => load(ex, x.w, bw)));
-    const maxR = Math.max(...allPrev.map(x => x.reps));
-    const moreW = sets.some(x => load(ex, x.w, bw) > maxW + 1e-6);
-    const moreR = sets.some(x => x.reps > maxR);
-    return { type: moreW && moreR ? 'both' : moreW ? 'weight' : moreR ? 'reps' : 'e1rm', e1: nowE1 };
+  /** body weight (kg) on a given day: the latest entry up to the end of that day, else the earliest entry, else the current value */
+  function bwAt(st, ts) {
+    const log = st.bwLog || [];
+    const until = addDays(ts, 1);
+    let best = null;
+    log.forEach(b => { if (b.date < until && (!best || b.date >= best.date)) best = b; });
+    if (!best && log.length) best = log.reduce((a, b) => (b.date < a.date ? b : a));
+    return best && best.kg > 0 ? best.kg : st.settings.bodyweight;
+  }
+  const histBW = (st, h) => h.bw || bwAt(st, h.date);
+  /** best sets of an exercise in earlier workouts: estimated 1RM, the same per kg of body weight, heaviest load, most reps */
+  function recordBase(ex, st, variant) {
+    const base = { n: 0, e1: 0, rel: 0, maxL: 0, maxR: 0, sets: [] };
+    st.history.forEach(h => {
+      const bw = histBW(st, h);
+      h.items.forEach(it => {
+        if (it.exId !== ex.id || (variant && it.variant && it.variant !== variant)) return;
+        it.sets.forEach(x => addRecord(base, ex, x, bw));
+      });
+    });
+    return base;
+  }
+  function addRecord(base, ex, x, bw) {
+    const L = load(ex, x.w, bw); const e = e1rm(L, x.reps, x.rir);
+    base.n++; base.e1 = Math.max(base.e1, e); base.rel = Math.max(base.rel, e / bw);
+    base.maxL = Math.max(base.maxL, L); base.maxR = Math.max(base.maxR, x.reps); base.sets.push([L, x.reps]);
+  }
+  /** is one set a new record compared with `base`? Absolute strength first; otherwise strength per kg of body
+   *  weight, so keeping your strength while losing weight also counts. */
+  function setRecord(base, ex, x, bw) {
+    if (!base.n || !(x.reps > 0) || !(bw > 0)) return null;
+    const L = load(ex, x.w, bw); const e = e1rm(L, x.reps, x.rir); const rel = e / bw;
+    if (e > base.e1 * 1.005) {
+      const heavier = L > base.maxL + 1e-6;
+      const repsHere = Math.max(0, ...base.sets.filter(p => p[0] >= L - 1e-6).map(p => p[1]));
+      const type = heavier ? (x.reps > base.maxR ? 'both' : 'weight') : x.reps > repsHere ? 'reps' : 'e1rm';
+      return { type, e1: e, prevE1: base.e1, rel, prevRel: base.rel };
+    }
+    if (ex.load !== 'band' && rel > base.rel * 1.005) return { type: 'rel', e1: e, prevE1: base.e1, rel, prevRel: base.rel };
+    return null;
+  }
+  /** record (or null) for every set of one exercise in the current workout, in the order they were done */
+  function setRecords(ex, sets, st, variant, bw) {
+    const base = recordBase(ex, st, variant);
+    return sets.map(x => { const r = setRecord(base, ex, x, bw); addRecord(base, ex, x, bw); return r; });
+  }
+  /** the record of a finished exercise: its strongest absolute record, else its best relative one */
+  function recordCheck(ex, sets, st, variant, bw) {
+    const recs = setRecords(ex, sets, st, variant, bw).filter(Boolean);
+    if (!recs.length) return null;
+    const abs = recs.filter(r => r.type !== 'rel');
+    return abs.length ? abs.reduce((a, r) => (r.e1 > a.e1 ? r : a)) : recs.reduce((a, r) => (r.rel > a.rel ? r : a));
   }
   function performanceScore(st, from, to) {
     const hs = st.history.filter(h => h.date >= from && h.date <= to);
@@ -916,7 +982,7 @@ const Engine = (() => {
   }
 
   return {
-    LB, FATIGUE, DAY, addDays, uid, clamp, level, recommendedType, templateWorkouts, routine, currentWorkout, unusedMuscles, routineValid, weeklyFreq, daysPerWeek, basePlanned, regularPlanned, weekStart, weekOverride, activeOverride, rotOf, setRot, fatigueSignal,
+    LB, FATIGUE, DAY, addDays, uid, clamp, fatigueFor, bwAt, histBW, setRecords, level, recommendedType, templateWorkouts, routine, currentWorkout, unusedMuscles, routineValid, weeklyFreq, daysPerWeek, basePlanned, regularPlanned, weekStart, weekOverride, activeOverride, rotOf, setRot, fatigueSignal,
     dayStart, weekday, isTrainingDay, nextWorkoutAt, budgetFor, consecutiveTrained, restRecommended, deloadState, recovery,
     env, available, injury, disliked, score, ranked, candidates, restFor, minRest, rirFor, repRangeFor, setDur, transition, warmupCount, estimate, baseSets,
     buildPlan, finalize, exPref, setExPref, variantsFor, primaryEquip, equipOptions, machineCfg, barWeightFor,

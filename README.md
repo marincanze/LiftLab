@@ -7,7 +7,11 @@ Offline trener za trening z utežmi (PWA). Načrtuje treninge glede na tvoj čas
 - **Okolja za trening**: več okolij, oprema s kljukicami, inventar plošč, palic, ročk, kettlebellov, elastik, male prilagoditve, nastavitev naprav (plošče ali blok uteži, razponi teže, osnovna teža) in variante naprav.
 - **Načrtovanje**: trening se prilagodi času, deload tedni, predlog dneva počitka, superseti in drop seti (samodejno ali ročno), podaljšanje, preskok, ponovna sestava, razvrščanje.
 - **Prikaz izvedbe**: animirana figura za vsako vajo (gib v priporočenem tempu, označena ciljna mišica), deluje brez povezave.
-- **Aktivni trening**: napovedan konec, priprava → ogrevanje → izvedba → vpis seta → počitek, hitri namigi za težo, kalkulator plošč, elastike in vaje s pomočjo, opombe, zgodovina vaje, celozaslonski način, premor, ocena težavnosti, rekordi.
+- **Aktivni trening**: trajanje treninga ves čas na vrhu, napovedan konec, priprava → ogrevanje → izvedba → vpis seta → počitek, hitri namigi za težo, kalkulator plošč, elastike in vaje s pomočjo, opombe, zgodovina vaje, celozaslonski način, premor, ocena težavnosti.
+- **Rekordi**: obvestilo takoj po vpisu seta, tudi za rekord relativne moči (ista moč pri nižji telesni masi); oznake rekordov pri setih in v zgodovini.
+- **Ocena ponovitev glede na počitek**: daljši počitek od časovnika dvigne oceno, krajši jo zniža.
+- **Telesna masa**: vpis na zavihku Trening, na Domov in v Statistiki, en vpis na dan.
+- **Urejanje setov**: vpisan set urediš v svojem oknu, trening teče naprej brez novih predlogov (npr. drop setov).
 - **Tedenski načrt in knjižnica vaj**: vsi treningi v tednu z načrtovanimi seti na mišico; pregled vseh vaj z iskanjem in prikazom izvedbe.
 - **Enkratne spremembe tedna**: drugi dnevi treninga in drug split samo za izbrani teden, nato se redni program vrne sam.
 - **Deload po potrebi**: predlog lažjega tedna, ko napredek zastane (ne fiksno po koledarju).

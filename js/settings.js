@@ -33,7 +33,7 @@
     ${App.toggleRow('settings.prefs.logBothSides', t('pref.bothSides'))}
     ${App.toggleRow('settings.prefs.autoStart', t('pref.autoStart'), t('pref.autoStart.d'))}
     ${App.toggleRow('settings.prefs.showEstReps', t('pref.showEst'))}
-    ${App.toggleRow('settings.prefs.prNotifications', t('pref.prNotif'))}
+    ${App.toggleRow('settings.prefs.prNotifications', t('pref.prNotif'), t('pref.prNotif.d'))}
     ${App.toggleRow('settings.prefs.suggestions', t('pref.suggestions'))}
     ${App.toggleRow('settings.prefs.sound', t('pref.sound'))}
     ${App.toggleRow('settings.prefs.notifications', t('pref.notifications'), t('pref.notifications.d'))}
